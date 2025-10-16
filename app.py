@@ -459,12 +459,21 @@ funcs   = load_functions()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"] = set()
 
-# --- Sidebar: Branding + Período + Perfil ---
+# --- Sidebar: Branding centrado + Período ---
 logo_path = "assets/logo.png"
 with st.sidebar:
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=85)
-    st.markdown("<div class='sidebar-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
+            <img src="{logo_path if os.path.exists(logo_path) else 'https://placehold.co/90x90'}"
+                 style="width:90px; height:auto; display:block; margin:0 auto;" />
+            <div style="margin-top:6px; color:{PRIMARY}; font-weight:800; font-size:15px;">
+                Leixões SC — Avaliação de Plantel
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     today = datetime.today()
     if "ano" not in st.session_state:
