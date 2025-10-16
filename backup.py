@@ -1,4 +1,5 @@
-# app.py — Leixões SC - Avaliação de Plantel (Streamlit + Google Sheets, com cache/batch e fallback CSV)
+# app.py — Leixões SC — Avaliação de Plantel
+# Streamlit + Google Sheets (cache, batch-read, write-first) + UI afinada e alinhada
 
 import os
 from datetime import datetime
@@ -8,6 +9,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from gspread.exceptions import WorksheetNotFound, SpreadsheetNotFound, APIError
 
 # =========================
 # Configuração visual/tema
@@ -18,22 +20,142 @@ GREEN   = "#2e7d32"
 
 st.set_page_config(page_title="Leixões SC — Avaliação de Plantel", layout="wide")
 
+# ---- CSS Global (sidebar estreita, botões vermelhos, progresso estilizado) ----
 st.markdown(
     f"""
-<style>
-.block-container {{ padding-top: .6rem; }}
-h1, h2, h3, h4 {{ color: {BLACK}; }}
-.sidebar-title {{ color: {PRIMARY}; font-weight: 700; font-size: 1.1rem; margin: .25rem 0 .5rem 0; }}
-.badge {{ display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius:999px; font-size:.75rem; }}
-.player-card {{ padding:6px 6px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; }}
-.player-card:hover {{ background:#fafafa; }}
-.small {{ font-size:.85rem; color:#666; }}
-.sidebar-logo {{ display:flex; align-items:center; gap:10px; }}
-.sidebar-subtitle {{ font-size:0.92rem; color:#333; margin-top:4px; }}
-</style>
-""",
+    <style>
+    /* Sidebar mais estreita e com fundo leve */
+    [data-testid="stSidebar"] {{
+        min-width: 315px !important;
+        max-width: 315px !important;
+        background-color: #f3f3f3;
+        padding-top: 1.0rem;
+        padding-left: 0.6rem;
+        padding-right: 0.6rem;
+    }}
+    /* Centraliza imagens (logo) na sidebar */
+    [data-testid="stSidebar"] img {{
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }}
+    /* Título da sidebar (vermelho Leixões) */
+    .sidebar-title {{
+        text-align: center;
+        color: {PRIMARY};
+        font-weight: 800;
+        font-size: 15px;
+        margin-top: 0.4rem;
+        margin-bottom: 1.0rem;
+    }}
+    /* Rótulos menores e consistentes na sidebar */
+    [data-testid="stSidebar"] label {{
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
+        color: #333 !important;
+    }}
+    /* Buttons (toda a app) — vermelho Leixões + padding consistente */
+    .stButton > button {{
+        background-color: {PRIMARY} !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 0.9rem !important;
+        font-weight: 700 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,.05);
+    }}
+    .stButton > button:disabled {{
+        opacity: .45 !important;
+    }}
+    .stButton > button:hover:enabled {{
+        filter: brightness(0.95);
+    }}
+
+    /* Progress bar – realça com vermelho Leixões */
+    [data-testid="stProgressBar"] > div > div {{
+        background-color: {PRIMARY} !important;
+    }}
+    [data-testid="stProgressBar"] {{
+        height: 12px !important;
+        border-radius: 99px !important;
+        background-color: #e9e9e9 !important;
+    }}
+
+    /* Badges e cartões */
+    .badge {{
+        display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius:999px; font-size:.75rem;
+    }}
+    .player-card {{ padding:6px 6px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; }}
+    .player-card:hover {{ background:#fafafa; }}
+
+    /* Títulos globais */
+    h1, h2, h3, h4 {{ color: {BLACK}; }}
+    </style>
+    """,
     unsafe_allow_html=True,
 )
+
+# === Sidebar: logo centrado e maior ===
+st.markdown(f"""
+<style>
+/* garante centragem de qualquer imagem na sidebar */
+[data-testid="stSidebar"] img {{
+  display:block; margin:0 auto;
+}}
+/* bloco do logo + título com alinhamento central */
+.sidebar-brand {{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; margin-bottom:12px;
+}}
+.sidebar-brand .brand-title {{
+  color:{PRIMARY}; font-weight:800; font-size:16px; margin-top:6px;
+}}
+</style>
+""", unsafe_allow_html=True)
+
+# === Sidebar: lista de jogadores — alinhamento perfeito a 60px ===
+st.markdown("""
+<style>
+/* cada item tem 60px de altura */
+.player-item { margin-bottom:10px; }
+.player-row-fixed { height:60px; }
+
+/* cada coluna do item centra verticalmente o conteúdo */
+.player-row-fixed [data-testid="column"]{
+  display:flex; align-items:center; gap:8px;
+}
+
+/* imagem 60×60 sem margens do Streamlit */
+.player-row-fixed .img-wrap{
+  width:60px; height:60px; display:flex; align-items:center; justify-content:center;
+}
+.player-row-fixed .img-wrap [data-testid="stImage"]{ margin:0 !important; padding:0 !important; }
+.player-row-fixed .img-wrap img{
+  width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; display:block;
+}
+
+/* botão com a MESMA altura da imagem, texto centrado verticalmente */
+.player-row-fixed .btn-wrap .stButton{ width:100%; margin:0 !important; }
+.player-row-fixed .btn-wrap .stButton > button{
+  width:100% !important;
+  height:60px !important;
+  display:flex; align-items:center; justify-content:flex-start;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  padding:0 0.60rem !important; font-size:0.96rem !important;
+  margin:0 !important;
+}
+
+/* bolinha de estado */
+.status-dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
+.status-done{ background:#2e7d32; }
+.status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
+
+/* bloco do jogador selecionado (título + foto) centrado */
+.player-hero{ display:flex; flex-direction:column; align-items:center; }
+.player-hero-title{ text-align:center; font-weight:700; margin:8px 0 10px 0; }
+</style>
+""", unsafe_allow_html=True)
+
 
 # =========================
 # Caminhos e ficheiros
@@ -48,8 +170,6 @@ FECHOS_CSV     = os.path.join(DATA_DIR, "fechos.csv")
 # 🔗 GOOGLE SHEETS (com fallback local) + anti-429
 # ============================================================
 USE_SHEETS = True  # Google Sheets ativo
-
-from gspread.exceptions import WorksheetNotFound, SpreadsheetNotFound, APIError
 
 REQUIRED_TABS = {
     "avaliacoes": [
@@ -70,7 +190,7 @@ def _get_sheet_id():
     if not sid:
         sid = st.secrets.get("SHEET_ID", None)
     if not sid:
-        raise ValueError("SHEET_ID não encontrado nos secrets. Defina-o dentro de [gcp_service_account] ou na raiz.")
+        raise ValueError("SHEET_ID não encontrado nos secrets. Defina-o em [gcp_service_account] ou na raiz.")
     sid = str(sid).strip()
     if "docs.google.com/spreadsheets/d/" in sid:
         try:
@@ -103,25 +223,11 @@ def _open_sheet():
     except APIError as e:
         raise RuntimeError(f"APIError ao abrir a Sheet (possível 404/quota). Detalhe: {e}") from e
 
-def ensure_gs_tabs():
-    """Garante que as abas exigidas existem com cabeçalhos corretos (chamar 1x/sessão)."""
-    sh = _open_sheet()
-    existing = {ws.title for ws in sh.worksheets()}
-    for tab, header in REQUIRED_TABS.items():
-        if tab not in existing:
-            ws = sh.add_worksheet(title=tab, rows=1000, cols=max(len(header), 10))
-            ws.update([header])
-        else:
-            ws = sh.worksheet(tab)
-            if not ws.row_values(1):
-                ws.update([header])
-
 @st.cache_data(ttl=120, show_spinner=False)
 def gs_read_bulk():
     """
-    Lê 'avaliacoes' e 'fechos' numa chamada (values_batch_get) e devolve DataFrames.
-    - Tolerante a quota (429): devolve vazios temporariamente.
-    - Tolerante a linhas com comprimentos diferentes: faz pad/truncate para caber no header.
+    Lê 'avaliacoes' e 'fechos' numa chamada via Spreadsheet.values_batch_get.
+    Tolerante a quotas (429) e a abas em falta; devolve DataFrames vazios nesses casos.
     """
     sh = _open_sheet()
     try:
@@ -138,36 +244,23 @@ def gs_read_bulk():
         values = vr_dict.get("values", []) if isinstance(vr_dict, dict) else []
         if not values:
             return pd.DataFrame()
-
-        # header “limpo”
         raw_header = values[0]
         header = [str(h).strip() for h in raw_header if h is not None]
-
         if not header:
             return pd.DataFrame()
-
         rows = values[1:]
-
-        # pad/truncate cada linha para o tamanho do header
         fixed_rows = []
         ncols = len(header)
         for r in rows:
-            if r is None:
-                r = []
-            # garante que é uma lista
-            r = list(r)
-            # pad com strings vazias
+            r = list(r or [])
             if len(r) < ncols:
                 r = r + [""] * (ncols - len(r))
-            # truncate se tiver a mais
             if len(r) > ncols:
                 r = r[:ncols]
             fixed_rows.append(r)
-
         try:
             df = pd.DataFrame(fixed_rows, columns=header)
         except Exception:
-            # fallback ultra-defensivo: tenta sem nomes de colunas (não deve ser preciso)
             df = pd.DataFrame(fixed_rows)
             df.columns = [f"col_{i+1}" for i in range(df.shape[1])]
         return df
@@ -175,7 +268,7 @@ def gs_read_bulk():
     df_av = _to_df_safe(vrs[0] if len(vrs) > 0 else {})
     df_f  = _to_df_safe(vrs[1] if len(vrs) > 1 else {})
 
-    # coerção básica de tipos se existirem as colunas
+    # coerção básica de tipos
     if not df_av.empty:
         for col in ["player_id","player_numero","ano","mes","encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]:
             if col in df_av.columns:
@@ -190,38 +283,31 @@ def gs_read_bulk():
 def gs_append(sheet_name: str, row_dict: dict) -> bool:
     """
     Escreve diretamente sem chamadas de leitura:
-    - Usa worksheets_by_title com cache local (sem GET por pedido).
-    - Se a aba não existir, cria sem pedir metadados à API.
+    - Evita .worksheet() (faz GET); tenta usar cache local ou cria a aba direto.
     - Tenta até 3 vezes em caso de quota 429.
     """
     import time
     sh = _open_sheet()
 
-    # header e linha a escrever
     header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
     row = [row_dict.get(col, "") for col in header]
 
-    # tentamos reutilizar a worksheet se já tivermos cache
-    ws = None
+    # cache simples de worksheets por sessão
     if "_ws_cache" not in st.session_state:
         st.session_state["_ws_cache"] = {}
     ws_cache = st.session_state["_ws_cache"]
 
-    if sheet_name in ws_cache:
-        ws = ws_cache[sheet_name]
-    else:
+    ws = ws_cache.get(sheet_name, None)
+    if ws is None:
         try:
-            # em vez de sh.worksheet() que faz GET, percorremos localmente worksheets_by_title
             for w in sh.worksheets():
                 if w.title == sheet_name:
                     ws = w
                     break
         except Exception:
-            # se mesmo isto falhar (por quota), criamos sem verificar
             ws = None
 
     if ws is None:
-        # cria diretamente a aba, sem validação
         try:
             ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(header), 10))
             ws.update([header])
@@ -230,7 +316,6 @@ def gs_append(sheet_name: str, row_dict: dict) -> bool:
             st.error(f"Não consegui criar a aba '{sheet_name}': {e}")
             return False
 
-    # Tenta append_row com backoff
     for attempt in range(3):
         try:
             ws.append_row(row, value_input_option="USER_ENTERED")
@@ -250,14 +335,18 @@ def gs_append(sheet_name: str, row_dict: dict) -> bool:
     return False
 
 def gs_replace_all(sheet_name: str, df: pd.DataFrame):
-    """Substitui toda a aba por um DataFrame (usado raramente)."""
+    """Substitui toda a aba por um DataFrame (usar com cuidado)."""
     try:
         sh = _open_sheet()
         try:
-            ws = sh.worksheet(sheet_name)
-        except WorksheetNotFound:
-            ensure_gs_tabs()
-            ws = sh.worksheet(sheet_name)
+            if "_ws_cache" in st.session_state and sheet_name in st.session_state["_ws_cache"]:
+                ws = st.session_state["_ws_cache"][sheet_name]
+            else:
+                ws = sh.worksheets()[0] if sh.worksheets() else sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(df.columns), 10))
+                if ws.title != sheet_name:
+                    ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(df.columns), 10))
+        except Exception:
+            ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(df.columns), 10))
         ws.clear()
         if df.empty:
             ws.update([REQUIRED_TABS.get(sheet_name, [])])
@@ -271,18 +360,10 @@ def gs_replace_all(sheet_name: str, df: pd.DataFrame):
 # ============================================================
 def ensure_files():
     os.makedirs(DATA_DIR, exist_ok=True)
-    # avaliacoes.csv
     if not os.path.exists(AVALIACOES_CSV):
-        pd.DataFrame(columns=[
-            "timestamp","ano","mes","avaliador","player_id","player_numero","player_nome",
-            "encaixe","fisicas","mentais","impacto_of","impacto_def","potencial",
-            "funcoes","observacoes",
-        ]).to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
-    # fechos.csv
+        pd.DataFrame(columns=REQUIRED_TABS["avaliacoes"]).to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
     if not os.path.exists(FECHOS_CSV):
-        pd.DataFrame(columns=["timestamp","ano","mes","avaliador","completos","total","status"]).to_csv(
-            FECHOS_CSV, index=False, encoding="utf-8"
-        )
+        pd.DataFrame(columns=REQUIRED_TABS["fechos"]).to_csv(FECHOS_CSV, index=False, encoding="utf-8")
 
 def _read_csv_flex(path: str) -> pd.DataFrame:
     """Lê CSV aceitando vírgula ou ponto e vírgula; tenta utf-8 depois latin-1."""
@@ -365,15 +446,13 @@ def read_fechos() -> pd.DataFrame:
 def save_avaliacao(row: dict):
     if USE_SHEETS:
         ok = gs_append("avaliacoes", row)
-        # invalida cache para refletir imediatamente
-        gs_read_bulk.clear()
+        gs_read_bulk.clear()  # invalida cache p/ refletir mais depressa
         if not ok:
-            # fallback: guarda localmente para não perder dados
-            df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
+            df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame(columns=REQUIRED_TABS["avaliacoes"])
             df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
             df.to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
     else:
-        df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
+        df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame(columns=REQUIRED_TABS["avaliacoes"])
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
         df.to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
 
@@ -388,11 +467,11 @@ def fechar_mes(avaliador: str, ano: int, mes: int, completos: int, total: int):
         ok = gs_append("fechos", row)
         gs_read_bulk.clear()
         if not ok:
-            df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
+            df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame(columns=REQUIRED_TABS["fechos"])
             df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
             df.to_csv(FECHOS_CSV, index=False, encoding="utf-8")
     else:
-        df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
+        df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame(columns=REQUIRED_TABS["fechos"])
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
         df.to_csv(FECHOS_CSV, index=False, encoding="utf-8")
 
@@ -407,15 +486,35 @@ def trimmed_mean(vals):
     if n >= 3: return (sum(vals) - min(vals) - max(vals)) / (n - 2)
     return sum(vals)/n
 
-def foto_path(player_id: int) -> str:
-    p = f"assets/fotos/{player_id}.jpg"
-    return p if os.path.exists(p) else "https://placehold.co/60x60?text=%20"
+def foto_path_for(player_id: int, size: int = 44) -> str:
+    """
+    Devolve o caminho da foto do jogador (jpg/jpeg/png/webp).
+    Se não existir, devolve um placeholder do tamanho pedido.
+    """
+    base = f"assets/fotos/{player_id}"
+    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+        p = base + ext
+        if os.path.exists(p):
+            return p
+    return f"https://placehold.co/{size}x{size}/cccccc/ffffff?text=%20"
 
 def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id: int) -> bool:
-    if df.empty:
+    """Verifica se já existe avaliação para determinado jogador/avaliador/mês (tolerante a df vazio)."""
+    if df is None or df.empty:
         return False
-    m = (df.get("avaliador","")==avaliador) & (df.get("ano",0)==ano) & (df.get("mes",0)==mes) & (df.get("player_id",0)==player_id)
-    return not df[m].empty
+    needed = {"avaliador", "ano", "mes", "player_id"}
+    if not needed.issubset(set(df.columns)):
+        return False
+    try:
+        mask = (
+            (df["avaliador"].astype(str) == str(avaliador))
+            & (df["ano"].astype(int) == int(ano))
+            & (df["mes"].astype(int) == int(mes))
+            & (df["player_id"].astype(int) == int(player_id))
+        )
+        return not df.loc[mask].empty
+    except Exception:
+        return False
 
 # =========================
 # Carregamento base + Sidebar (branding + período)
@@ -427,28 +526,38 @@ funcs   = load_functions()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"] = set()
 
-# --- Branding + Período na sidebar ---
-if os.path.exists("assets/logo.png"):
-    st.sidebar.image("assets/logo.png", width=90)
-st.sidebar.markdown('<div class="sidebar-subtitle"><b>Leixões SC- Avaliação de Plantel</b></div>', unsafe_allow_html=True)
-
-today = datetime.today()
-if "ano" not in st.session_state: st.session_state["ano"] = today.year
-if "mes" not in st.session_state: st.session_state["mes"] = today.month
-
-st.session_state["ano"] = st.sidebar.number_input("Ano", min_value=2024, max_value=2100, value=st.session_state["ano"], step=1)
-st.session_state["mes"] = st.sidebar.selectbox(
-    "Mês",
-    list(range(1,13)),
-    index=st.session_state["mes"]-1,
-    format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize()
-)
-ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
+# --- Sidebar: Branding ---
+logo_path = "assets/logo.png"
+with st.sidebar:
+    st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=120, clamp=True)   # <-- altera aqui o tamanho se quiseres
+    else:
+        st.image("https://placehold.co/120x120?text=Logo", width=120)
+    st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
+    today = datetime.today()
+    if "ano" not in st.session_state:
+        st.session_state["ano"] = today.year
+    if "mes" not in st.session_state:
+        st.session_state["mes"] = today.month
+
+    st.session_state["ano"] = st.number_input("Ano", min_value=2024, max_value=2100,
+                                              value=st.session_state["ano"], step=1)
+    st.session_state["mes"] = st.selectbox(
+        "Mês",
+        list(range(1, 13)),
+        index=st.session_state["mes"] - 1,
+        format_func=lambda m: datetime(2000, m, 1).strftime("%B").capitalize(),
+    )
+
+ano = int(st.session_state["ano"])
+mes = int(st.session_state["mes"])
 
 st.sidebar.markdown("---")
-st.sidebar.markdown('<div class="sidebar-title">Utilizador</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="sidebar-title" style="color:#333;font-weight:700;">Utilizador</div>', unsafe_allow_html=True)
 perfil = st.sidebar.selectbox(
     "Perfil",
     ["Avaliador 1","Avaliador 2","Avaliador 3","Avaliador 4","Avaliador 5","Avaliador 6","Avaliador 7","Administrador"]
@@ -467,8 +576,15 @@ st.sidebar.write("🏃 **Jogadores**")
 df_all, df_fechos = read_avaliacoes(), read_fechos()
 
 def completed_for_player(pid: int) -> bool:
-    in_session = (perfil, ano, mes, pid) in st.session_state["session_completed"]
-    in_sheet = is_completed(df_all, perfil, ano, mes, pid)
+    """Combina estado local e dados na Sheet, tolerante a erros."""
+    try:
+        in_session = (perfil, ano, mes, pid) in st.session_state["session_completed"]
+    except Exception:
+        in_session = False
+    try:
+        in_sheet = is_completed(df_all, perfil, ano, mes, pid)
+    except Exception:
+        in_sheet = False
     return in_session or in_sheet
 
 completos_ids = [int(pid) for pid in players["id"].tolist() if completed_for_player(int(pid))]
@@ -479,25 +595,42 @@ if "selecionado_id" not in st.session_state:
     st.session_state["selecionado_id"] = int(players.iloc[0].id)
 selecionado_id = st.session_state["selecionado_id"]
 
+# ---- Lista de jogadores (img 60x60 / botão / dot) ----
+# ---- Lista de jogadores (img 60x60 / botão / dot) ----
 for _, row in players.iterrows():
-    pid = int(row["id"])
-    foto = foto_path(pid)
+    pid   = int(row["id"])
+    foto  = foto_path_for(pid, 60)
+    label = f"#{int(row['numero']):02d} — {row['nome']}"
+
     with st.sidebar.container():
-        c1, c2, c3 = st.columns([0.35, 1.3, 0.6])
-        c1.image(foto, width=36, clamp=True)
-        label = f"#{int(row['numero']):02d} — {row['nome']}"
-        if c2.button(label, key=f"sel_{pid}"):
-            selecionado_id = pid
-        done = pid in completos_ids
-        c3.markdown(
-            f"<span class='badge' style='border-color:{'#cfc' if done else '#eee'}; color:{GREEN if done else '#888'}'>{'🟢' if done else '—'}</span>",
-            unsafe_allow_html=True
-        )
+        st.markdown("<div class='player-item player-row-fixed'>", unsafe_allow_html=True)
+
+        # colunas: imagem / botão / dot (sem espaço morto)
+        c1, c2, c3 = st.columns([0.55, 1.35, 0.10], gap="small")
+
+        with c1:
+            st.markdown("<div class='img-wrap'>", unsafe_allow_html=True)
+            st.image(foto, width=60, clamp=True)  # força 60px
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with c2:
+            st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
+            if st.button(label, key=f"sel_{pid}"):
+                selecionado_id = pid
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        done = completed_for_player(pid)
+        with c3:
+            st.markdown(
+                f"<span class='status-dot {'status-done' if done else 'status-pending'}'></span>",
+                unsafe_allow_html=True
+            )
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 st.session_state["selecionado_id"] = selecionado_id
 selecionado = players[players["id"]==selecionado_id].iloc[0]
 
-st.divider()
 
 # =========================
 # Layout principal
@@ -506,13 +639,27 @@ col1, col2 = st.columns([1.2, 2.2], gap="large")
 
 with col1:
     st.markdown("#### Jogador selecionado")
-    st.markdown(
-        f"<span class='badge'>#{int(selecionado['numero'])}</span> <b>{selecionado['nome']}</b>",
-        unsafe_allow_html=True
-    )
-    st.markdown("---")
 
-    if perfil != "Administrador":
+    # Cabeçalho e foto, centrados dentro da coluna esquerda
+    left_sp, center, right_sp = st.columns([1, 2, 1])
+    with center:
+        st.markdown(
+            f"""
+            <div style="text-align:center; font-weight:700; margin:8px 0 10px 0;">
+                <span class="badge">#{int(selecionado['numero'])}</span> {selecionado['nome']}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)  # foto por baixo, centrada
+
+    st.markdown("---")  # separador antes do formulário
+    # ... (segue o formulário como já tens)
+
+
+st.markdown("---")
+
+if perfil != "Administrador":
         st.subheader("Formulário de Avaliação")
 
         # controlos 1-4 (com fallback)
@@ -554,7 +701,7 @@ with col1:
             st.rerun()
 
         # Submissão global do mês
-        df_all = read_avaliacoes()  # recarrega após submit
+        df_all = read_avaliacoes()  # recarrega após submit (cache limpa na escrita)
         completos_ids = [int(pid) for pid in players["id"].tolist() if completed_for_player(int(pid))]
         falta = len(players) - len(completos_ids)
         st.markdown("---")
