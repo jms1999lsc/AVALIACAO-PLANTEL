@@ -462,7 +462,7 @@ def trimmed_mean(vals):
 def foto_path(player_id: int) -> str:
     p = f"assets/fotos/{player_id}.jpg"
     # placeholder mais pequeno (36x36) para alinhar com o botão
-    return p if os.path.exists(p) else "https://placehold.co/36x36/cccccc/ffffff?text=%20"
+    return p if os.path.exists(p) else "https://placehold.co/60x60/cccccc/ffffff?text=%20"
 
 def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id: int) -> bool:
     """Verifica se já existe avaliação para determinado jogador/avaliador/mês (tolerante a df vazio)."""
