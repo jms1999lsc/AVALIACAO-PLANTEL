@@ -526,21 +526,46 @@ funcs   = load_functions()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"] = set()
 
-# --- Sidebar: branding 100% centrado ---
+# --- Sidebar: branding ajustado, sem espaço morto no topo ---
 logo_path = "assets/logo.png"
 with st.sidebar:
-    # linha do logo centrado via colunas (método mais robusto no Streamlit)
+    # Remove padding superior com CSS customizado
+    st.markdown(
+        """
+        <style>
+            section[data-testid="stSidebar"] div[role="document"] {
+                padding-top: 0rem !important;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Cria colunas para centralizar o logo
     cL, cC, cR = st.columns([1, 2, 1])
     with cC:
         if os.path.exists(logo_path):
-            st.image(logo_path, width=140, clamp=True)   # <- muda 140 se quiseres maior/menor
+            st.image(
+                logo_path,
+                width=130,           # ajusta aqui se quiser maior/menor
+                use_column_width=False,
+                clamp=True
+            )
         else:
-            st.image("https://placehold.co/140x140?text=Logo", width=140)
+            st.image("https://placehold.co/130x130?text=Logo", width=130)
 
-    # título centrado
+    # Título centrado logo abaixo do símbolo
     st.markdown(
-        f"<div style='text-align:center; color:{PRIMARY}; font-weight:800; font-size:16px; margin:6px 0 12px;'>"
-        "Leixões SC — Avaliação de Plantel</div>",
+        f"""
+        <div style='text-align:center;
+                    color:{PRIMARY};
+                    font-weight:800;
+                    font-size:15px;
+                    margin-top:-6px;
+                    margin-bottom:16px;'>
+            Leixões SC — Avaliação de Plantel
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
