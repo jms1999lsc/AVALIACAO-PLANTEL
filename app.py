@@ -588,7 +588,6 @@ for _, row in players.iterrows():
 st.session_state["selecionado_id"] = selecionado_id
 selecionado = players[players["id"]==selecionado_id].iloc[0]
 
-st.divider()
 
 # =========================
 # Layout principal
