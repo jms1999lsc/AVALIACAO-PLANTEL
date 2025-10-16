@@ -62,25 +62,59 @@ def _open_sheet():
     gc = _get_gspread_client()
     sh = gc.open_by_key(st.secrets["gcp_service_account"]["SHEET_ID"])
     return sh
+# --- Exceções e cabeçalhos obrigatórios do Google Sheets ---
+from gspread.exceptions import WorksheetNotFound, SpreadsheetNotFound, APIError
+
+REQUIRED_TABS = {
+    "avaliacoes": [
+        "timestamp","ano","mes","avaliador","player_id","player_numero","player_nome",
+        "encaixe","fisicas","mentais","impacto_of","impacto_def","potencial",
+        "funcoes","observacoes",
+    ],
+    "fechos": ["timestamp","ano","mes","avaliador","completos","total","status"],
+}
+def ensure_gs_tabs():
+    """Garante que as abas exigidas existem com os cabeçalhos corretos."""
+    sh = _open_sheet()
+    existing = {ws.title for ws in sh.worksheets()}
+    for tab, header in REQUIRED_TABS.items():
+        if tab not in existing:
+            ws = sh.add_worksheet(title=tab, rows=1000, cols=max(len(header), 10))
+            ws.update([header])
+        else:
+            ws = sh.worksheet(tab)
+            first_row = ws.row_values(1)
+            if not first_row:
+                ws.update([header])
 
 def gs_read(sheet_name: str) -> pd.DataFrame:
-    """Lê dados de uma aba do Google Sheets."""
+    """Lê dados de uma aba; cria-a se ainda não existir."""
     try:
         sh = _open_sheet()
-        ws = sh.worksheet(sheet_name)
+        try:
+            ws = sh.worksheet(sheet_name)
+        except WorksheetNotFound:
+            ensure_gs_tabs()
+            ws = sh.worksheet(sheet_name)
         data = ws.get_all_records()
-        df = pd.DataFrame(data)
-        return df if not df.empty else pd.DataFrame()
+        return pd.DataFrame(data) if data else pd.DataFrame()
     except Exception as e:
         st.warning(f"⚠️ Falha ao ler '{sheet_name}' da Google Sheet: {e}")
         return pd.DataFrame()
 
 def gs_append(sheet_name: str, row_dict: dict):
-    """Adiciona uma linha (dicionário) a uma aba."""
+    """Adiciona linha; cria aba e cabeçalho se precisarem."""
     try:
         sh = _open_sheet()
-        ws = sh.worksheet(sheet_name)
+        try:
+            ws = sh.worksheet(sheet_name)
+        except WorksheetNotFound:
+            ensure_gs_tabs()
+            ws = sh.worksheet(sheet_name)
         header = ws.row_values(1)
+        if not header:
+            header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
+            ws.update([header])
         row = [row_dict.get(col, "") for col in header]
         ws.append_row(row, value_input_option="USER_ENTERED")
     except Exception as e:
@@ -276,6 +310,12 @@ with top_r:
     )
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 st.divider()
+# Garante que as abas obrigatórias existem e têm cabeçalhos
+if USE_SHEETS:
+    try:
+        ensure_gs_tabs()
+    except Exception as _e:
+        st.warning(f"Não consegui garantir as abas no Google Sheets: {_e}")
 
 # =========================
 # Sidebar — Perfil + Jogadores
