@@ -27,7 +27,7 @@ st.markdown(
     /* Sidebar mais estreita e com fundo leve */
     [data-testid="stSidebar"] {{
         min-width: 275px !important;
-        max-width: 350px !important;
+        max-width: 325px !important;
         background-color: #f3f3f3;
         padding-top: 1.0rem;
         padding-left: 0.6rem;
