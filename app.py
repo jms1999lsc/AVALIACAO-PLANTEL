@@ -117,20 +117,25 @@ def ensure_gs_tabs():
                 ws.update([header])
 
 @st.cache_data(ttl=30)
+@st.cache_data(ttl=120, show_spinner=False)
 def gs_read_bulk():
     """
-    Lê 'avaliacoes' e 'fechos' numa única ida à API (batch) e devolve dois DataFrames.
-    Usa Spreadsheet.batch_get (método correto no gspread).
-    Cache 30s para evitar 429.
+    Lê 'avaliacoes' e 'fechos' numa chamada batch (Spreadsheet.batch_get).
+    - Sem ensure de abas (evita leituras extra).
+    - TTL aumentado para 120s para reduzir chamadas e evitar 429.
+    - Tolerante a erros: em quota (429) devolve dataframes vazios (UI continua a funcionar).
     """
     sh = _open_sheet()
-    # garantir abas (barato; worksheets() está cacheado no recurso)
     try:
-        ensure_gs_tabs()
-    except Exception:
-        pass
-
-    ranges = sh.batch_get(["avaliacoes!A1:Z", "fechos!A1:Z"])
+        ranges = sh.batch_get(["avaliacoes!A1:Z", "fechos!A1:Z"])
+    except APIError as e:
+        es = str(e)
+        if "Quota exceeded" in es or "429" in es:
+            # devolve vazio temporariamente; próxima execução pós-TTL volta a tentar
+            return pd.DataFrame(), pd.DataFrame()
+        # Se a sheet existir mas uma das tabs não existir, o batch_get pode lançar 400;
+        # vamos tratar em parsing abaixo também devolvendo vazio.
+        raise
 
     def _to_df(values):
         if not values:
@@ -140,6 +145,7 @@ def gs_read_bulk():
             return pd.DataFrame()
         return pd.DataFrame(rows, columns=header)
 
+    # ranges vem como lista de listas; se uma aba não existir, a API pode devolver lista vazia
     df_av = _to_df(ranges[0] if len(ranges) > 0 else [])
     df_f  = _to_df(ranges[1] if len(ranges) > 1 else [])
 
@@ -156,40 +162,63 @@ def gs_read_bulk():
 
 def gs_append(sheet_name: str, row_dict: dict) -> bool:
     """
-    Adiciona linha; cria aba/cabeçalho se necessário. Backoff em 429.
-    Retorna True se gravou na Sheet; False se falhou (e já terá mostrado o erro).
+    Escreve sem leituras desnecessárias:
+    - Tenta append direto.
+    - Se a aba não existir, cria e escreve o cabeçalho, depois volta a tentar.
+    - Se falhar por quota (429), faz backoff.
+    Retorna True se gravou na Sheet; False se não conseguiu (nesse caso já aparecem erros na UI).
     """
     import time
     sh = _open_sheet()
+
+    # Ordem/colunas de referência (evita ler header da sheet)
+    header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
+    row = [row_dict.get(col, "") for col in header]
+
+    # Helper para tentar escrever cabeçalho (write-only)
+    def _ensure_header(ws):
+        ws.update([header])
+
+    # Obtém (ou cria) worksheet sem listar todas as worksheets()
     try:
+        ws = sh.worksheet(sheet_name)
+    except WorksheetNotFound:
+        # Cria a aba sem verificar mais nada
+        ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(header), 10))
+        _ensure_header(ws)
+
+    # Tenta 3 vezes, com backoff em caso de 429
+    for attempt in range(3):
         try:
-            ws = sh.worksheet(sheet_name)
-        except WorksheetNotFound:
-            ensure_gs_tabs()
-            ws = sh.worksheet(sheet_name)
-
-        header = ws.row_values(1)
-        if not header:
-            header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
-            ws.update([header])
-
-        row = [row_dict.get(col, "") for col in header]
-
-        for attempt in range(3):
-            try:
-                ws.append_row(row, value_input_option="USER_ENTERED")
-                return True
-            except APIError as e:
-                if "Quota exceeded" in str(e) or "429" in str(e):
-                    time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s
-                else:
-                    st.error(f"Erro API ao gravar na Sheet: {e}")
+            ws.append_row(row, value_input_option="USER_ENTERED")
+            return True
+        except APIError as e:
+            es = str(e)
+            # Aba existe mas sem cabeçalho? Escreve header e tenta 1x de novo
+            if "range" in es.lower() and "not found" in es.lower():
+                _ensure_header(ws)
+                try:
+                    ws.append_row(row, value_input_option="USER_ENTERED")
+                    return True
+                except APIError as e2:
+                    es2 = str(e2)
+                    if "Quota exceeded" in es2 or "429" in es2:
+                        time.sleep(2 * (attempt + 1))
+                        continue
+                    st.error(f"Erro API ao gravar (após header): {e2}")
                     return False
-        st.error("Falhou após várias tentativas por quota (429).")
-        return False
-    except Exception as e:
-        st.error(f"Erro inesperado ao gravar na Sheet: {e}")
-        return False
+            # Quota por minuto
+            if "Quota exceeded" in es or "429" in es:
+                time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s
+                continue
+            st.error(f"Erro API ao gravar na Sheet: {e}")
+            return False
+        except Exception as e:
+            st.error(f"Erro inesperado ao gravar na Sheet: {e}")
+            return False
+
+    st.error("Falhou após várias tentativas por quota (429).")
+    return False
 
 def gs_replace_all(sheet_name: str, df: pd.DataFrame):
     """Substitui toda a aba por um DataFrame (usado raramente)."""
@@ -387,13 +416,7 @@ st.session_state["mes"] = st.sidebar.selectbox(
 )
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 
-# Garante abas (1x por sessão) — evita 429
-if USE_SHEETS and not st.session_state.get("gs_tabs_ok", False):
-    try:
-        ensure_gs_tabs()
-        st.session_state["gs_tabs_ok"] = True
-    except Exception as _e:
-        st.warning(f"Não consegui garantir as abas no Google Sheets: {_e}")
+
 
 st.sidebar.markdown("---")
 st.sidebar.markdown('<div class="sidebar-title">Utilizador</div>', unsafe_allow_html=True)
