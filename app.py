@@ -95,7 +95,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# === Ajuste visual: lista de jogadores (uma linha, fotos alinhadas, sem espaço morto) ===
+# === Lista de jogadores (sidebar): fotos 44×44 + alinhamento perfeito ===
 st.markdown("""
 <style>
 /* Cada linha vira um flex-row e centra verticalmente o conteúdo das colunas */
@@ -103,20 +103,21 @@ st.markdown("""
   display:flex; align-items:center;
 }
 
-/* Caixa da imagem com tamanho fixo, sem “saltar” */
+/* Caixa da imagem com tamanho fixo 44×44 */
 .player-img{
-  width:36px; height:36px;
+  width:44px; height:44px;
   display:flex; align-items:center; justify-content:center;
 }
 .player-img img{
-  width:36px !important; height:36px !important; object-fit:cover; border-radius:6px;
+  width:44px !important; height:44px !important;
+  object-fit:cover; border-radius:8px;
 }
 
-/* Botão ocupa a largura toda e fica numa única linha com reticências */
+/* Botão numa única linha com reticências */
 .player-item .stButton > button{
   width:100% !important;
   white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
-  line-height:1.1rem !important; padding:0.30rem 0.50rem !important; font-size:0.92rem !important;
+  line-height:1.2rem !important; padding:0.40rem 0.55rem !important; font-size:0.94rem !important;
   margin-right:0 !important;
 }
 
@@ -126,7 +127,12 @@ st.markdown("""
 .status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
 
 /* Espaçamento entre filas */
-.player-item{ margin-bottom:6px; }
+.player-item{ margin-bottom:8px; }
+
+/* Título centrado no topo do formulário */
+.player-title-center{
+  text-align:center; font-weight:700; margin-bottom:8px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -459,15 +465,17 @@ def trimmed_mean(vals):
     if n >= 3: return (sum(vals) - min(vals) - max(vals)) / (n - 2)
     return sum(vals)/n
 
-def foto_path(player_id: int) -> str:
-    """Devolve o caminho da foto do jogador (aceita jpg/jpeg/png/webp)."""
+def foto_path_for(player_id: int, size: int = 36) -> str:
+    """
+    Devolve o caminho da foto do jogador aceitando jpg/jpeg/png/webp.
+    Se não existir, devolve um placeholder do tamanho pedido.
+    """
     base = f"assets/fotos/{player_id}"
     for ext in (".jpg", ".jpeg", ".png", ".webp"):
         p = base + ext
         if os.path.exists(p):
             return p
-    # placeholder 36x36 para alinhar com o botão
-    return "https://placehold.co/36x36/cccccc/ffffff?text=%20"
+    return f"https://placehold.co/{size}x{size}/cccccc/ffffff?text=%20"
 
 def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id: int) -> bool:
     """Verifica se já existe avaliação para determinado jogador/avaliador/mês (tolerante a df vazio)."""
@@ -562,20 +570,21 @@ if "selecionado_id" not in st.session_state:
 selecionado_id = st.session_state["selecionado_id"]
 
 # ---- Lista de jogadores alinhada (img 36x36 / botão / dot) ----
+# ---- Lista de jogadores alinhada (img 44x44 / botão / dot) ----
 for _, row in players.iterrows():
     pid = int(row["id"])
-    foto = foto_path(pid)
+    foto = foto_path_for(pid, 44)
     label = f"#{int(row['numero']):02d} — {row['nome']}"
 
     with st.sidebar.container():
         st.markdown("<div class='player-item player-row'>", unsafe_allow_html=True)
 
-        # 3 colunas: imagem / botão / pontinho de estado (sem espaço morto)
-        c1, c2, c3 = st.columns([0.35, 1.85, 0.10], gap="small")
+        # 3 colunas: imagem / botão / pontinho de estado (quase sem espaço morto)
+        c1, c2, c3 = st.columns([0.42, 1.78, 0.10], gap="small")
 
         with c1:
             st.markdown("<div class='player-img'>", unsafe_allow_html=True)
-            st.image(foto, clamp=True)  # 36x36 via CSS
+            st.image(foto, clamp=True)  # 44x44 via CSS
             st.markdown("</div>", unsafe_allow_html=True)
 
         if c2.button(label, key=f"sel_{pid}"):
@@ -601,11 +610,16 @@ col1, col2 = st.columns([1.2, 2.2], gap="large")
 
 with col1:
     st.markdown("#### Jogador selecionado")
+
+# Cabeçalho centrado (número + nome) e foto grande por baixo
+cL, cM, cR = st.columns([1, 2, 1])
+with cM:
     st.markdown(
-        f"<span class='badge'>#{int(selecionado['numero'])}</span> <b>{selecionado['nome']}</b>",
+        f"<div class='player-title-center'><span class='badge'>#{int(selecionado['numero'])}</span> {selecionado['nome']}</div>",
         unsafe_allow_html=True
     )
-    st.markdown("---")
+    st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)
+st.markdown("---")
 
     if perfil != "Administrador":
         st.subheader("Formulário de Avaliação")
