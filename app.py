@@ -1,4 +1,5 @@
-# app.py — Leixões Plataforma de Avaliação (Streamlit + Google Sheets)
+# app.py — Leixões Plataforma de Avaliação (Streamlit + Google Sheets, com cache e batch)
+# ------------------------------------------------------------------------------
 
 import os
 from datetime import datetime
@@ -43,9 +44,40 @@ AVALIACOES_CSV = os.path.join(DATA_DIR, "avaliacoes.csv")
 FECHOS_CSV     = os.path.join(DATA_DIR, "fechos.csv")
 
 # ============================================================
-# 🔗 INTEGRAÇÃO COM GOOGLE SHEETS (com fallback local em CSV)
+# 🔗 GOOGLE SHEETS (com fallback local) + anti-429
 # ============================================================
 USE_SHEETS = True  # True = usa Google Sheets / False = CSV local
+
+# exceções úteis
+from gspread.exceptions import WorksheetNotFound, SpreadsheetNotFound, APIError
+
+REQUIRED_TABS = {
+    "avaliacoes": [
+        "timestamp","ano","mes","avaliador","player_id","player_numero","player_nome",
+        "encaixe","fisicas","mentais","impacto_of","impacto_def","potencial",
+        "funcoes","observacoes",
+    ],
+    "fechos": ["timestamp","ano","mes","avaliador","completos","total","status"],
+}
+
+def _get_sheet_id():
+    """Obtém SHEET_ID dos secrets; aceita ID puro ou URL completa."""
+    sid = None
+    try:
+        sid = st.secrets["gcp_service_account"].get("SHEET_ID", None)
+    except Exception:
+        pass
+    if not sid:
+        sid = st.secrets.get("SHEET_ID", None)
+    if not sid:
+        raise ValueError("SHEET_ID não encontrado nos secrets. Defina-o dentro de [gcp_service_account] ou na raiz.")
+    sid = str(sid).strip()
+    if "docs.google.com/spreadsheets/d/" in sid:
+        try:
+            sid = sid.split("/d/")[1].split("/")[0]
+        except Exception:
+            raise ValueError("Não foi possível extrair o SHEET_ID da URL fornecida.")
+    return sid
 
 @st.cache_resource
 def _get_gspread_client():
@@ -58,100 +90,22 @@ def _get_gspread_client():
     ])
     return gspread.authorize(creds)
 
-def _get_sheet_id():
-    """Obtém o SHEET_ID dos secrets. Aceita ID puro ou URL completa."""
-    # 1) tentar dentro do bloco [gcp_service_account]
-    sid = None
-    try:
-        sid = st.secrets["gcp_service_account"].get("SHEET_ID", None)
-    except Exception:
-        pass
-    # 2) fallback para nível raiz
-    if not sid:
-        sid = st.secrets.get("SHEET_ID", None)
-    if not sid:
-        raise ValueError("SHEET_ID não encontrado nos secrets. Defina-o em [gcp_service_account].")
-
-    sid = str(sid).strip()
-
-    # aceitar URL completa e extrair o ID
-    if "docs.google.com/spreadsheets/d/" in sid:
-        # exemplo: https://docs.google.com/spreadsheets/d/<ID>/edit#gid=0
-        try:
-            sid = sid.split("/d/")[1].split("/")[0]
-        except Exception:
-            raise ValueError("Não foi possível extrair o SHEET_ID a partir da URL fornecida.")
-    return sid
-
 @st.cache_resource
 def _open_sheet():
-    gc = _get_gspread_client()
-    sid = _get_sheet_id()  # usa a tua função _get_sheet_id do patch anterior
-    return gc.open_by_key(sid)
-
-@st.cache_data(ttl=30)
-def gs_read_bulk():
-    """
-    Lê 'avaliacoes' e 'fechos' numa única ida à API (batch) e devolve dois DataFrames.
-    Cache 30s para evitar 429.
-    """
-    sh = _open_sheet()
-    # ranges largos para cobrir colunas (A a Z é suficiente para os nossos cabeçalhos)
-    res = sh.values_batch_get(ranges=["avaliacoes!A1:Z", "fechos!A1:Z"])
-    value_ranges = res.get("valueRanges", [])
-
-    def _to_df(vr):
-        values = vr.get("values", [])
-        if not values:
-            return pd.DataFrame()
-        header, *rows = values
-        if not header:
-            return pd.DataFrame()
-        return pd.DataFrame(rows, columns=header)
-
-    df_av = _to_df(value_ranges[0] if len(value_ranges) > 0 else {})
-    df_fech = _to_df(value_ranges[1] if len(value_ranges) > 1 else {})
-
-    # coerção de tipos básica
-    if not df_av.empty:
-        for col in ["player_id","player_numero","ano","mes","encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]:
-            if col in df_av.columns:
-                df_av[col] = pd.to_numeric(df_av[col], errors="coerce")
-    if not df_fech.empty:
-        for col in ["ano","mes","completos","total"]:
-            if col in df_fech.columns:
-                df_fech[col] = pd.to_numeric(df_fech[col], errors="coerce")
-
-    return df_av, df_fech
-
     gc = _get_gspread_client()
     sid = _get_sheet_id()
     try:
         return gc.open_by_key(sid)
     except SpreadsheetNotFound as e:
-        # 404 específico — ID errado ou service account sem acesso (não partilhou)
         raise RuntimeError(
-            "SpreadsheetNotFound (404). Verifique: "
-            "1) o SHEET_ID está correto; "
-            "2) a folha foi partilhada com a service account como Editor."
+            "SpreadsheetNotFound (404). Verifique o SHEET_ID e se a folha foi partilhada com a service account (Editor)."
         ) from e
     except APIError as e:
-        # outros 404 de API
-        raise RuntimeError(f"APIError ao abrir a Sheet (possível 404). Detalhe: {e}") from e
+        raise RuntimeError(f"APIError ao abrir a Sheet (possível 404/quota). Detalhe: {e}") from e
 
-REQUIRED_TABS = {
-    "avaliacoes": [
-        "timestamp","ano","mes","avaliador","player_id","player_numero","player_nome",
-        "encaixe","fisicas","mentais","impacto_of","impacto_def","potencial",
-        "funcoes","observacoes",
-    ],
-    "fechos": ["timestamp","ano","mes","avaliador","completos","total","status"],
-}
 def ensure_gs_tabs():
-    """Garante que as abas exigidas existem com os cabeçalhos corretos."""
-    from gspread.exceptions import WorksheetNotFound
-    sid = _get_sheet_id()
-    sh = _open_sheet()  # se falhar aqui, já sai com mensagem clara
+    """Garante que as abas exigidas existem com cabeçalhos corretos (chamar 1x/sessão)."""
+    sh = _open_sheet()
     existing = {ws.title for ws in sh.worksheets()}
     for tab, header in REQUIRED_TABS.items():
         if tab not in existing:
@@ -159,26 +113,44 @@ def ensure_gs_tabs():
             ws.update([header])
         else:
             ws = sh.worksheet(tab)
-            first_row = ws.row_values(1)
-            if not first_row:
+            if not ws.row_values(1):
                 ws.update([header])
 
-def gs_read(sheet_name: str) -> pd.DataFrame:
-    """Lê dados de uma aba; cria-a se ainda não existir."""
-    try:
-        sh = _open_sheet()
-        try:
-            ws = sh.worksheet(sheet_name)
-        except WorksheetNotFound:
-            ensure_gs_tabs()
-            ws = sh.worksheet(sheet_name)
-        data = ws.get_all_records()
-        return pd.DataFrame(data) if data else pd.DataFrame()
-    except Exception as e:
-        st.warning(f"⚠️ Falha ao ler '{sheet_name}' da Google Sheet: {e}")
-        return pd.DataFrame()
+@st.cache_data(ttl=30)
+def gs_read_bulk():
+    """
+    Lê 'avaliacoes' e 'fechos' numa única chamada (batch) e devolve dois DataFrames.
+    Cache 30s para evitar 429 (quota por minuto).
+    """
+    sh = _open_sheet()
+    res = sh.values_batch_get(ranges=["avaliacoes!A1:Z", "fechos!A1:Z"])
+    vrs = res.get("valueRanges", [])
+
+    def _to_df(vr):
+        values = vr.get("values", []) if isinstance(vr, dict) else []
+        if not values:
+            return pd.DataFrame()
+        header, *rows = values
+        if not header:
+            return pd.DataFrame()
+        return pd.DataFrame(rows, columns=header)
+
+    df_av = _to_df(vrs[0] if len(vrs) > 0 else {})
+    df_f  = _to_df(vrs[1] if len(vrs) > 1 else {})
+
+    # coerção básica
+    if not df_av.empty:
+        for col in ["player_id","player_numero","ano","mes","encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]:
+            if col in df_av.columns:
+                df_av[col] = pd.to_numeric(df_av[col], errors="coerce")
+    if not df_f.empty:
+        for col in ["ano","mes","completos","total"]:
+            if col in df_f.columns:
+                df_f[col] = pd.to_numeric(df_f[col], errors="coerce")
+    return df_av, df_f
 
 def gs_append(sheet_name: str, row_dict: dict):
+    """Adiciona linha; cria aba/cabeçalho se necessário e faz backoff em 429."""
     import time
     sh = _open_sheet()
     try:
@@ -194,29 +166,36 @@ def gs_append(sheet_name: str, row_dict: dict):
 
     row = [row_dict.get(col, "") for col in header]
 
-    # tenta com pequeno backoff se der 429
     for attempt in range(3):
         try:
             ws.append_row(row, value_input_option="USER_ENTERED")
             break
         except APIError as e:
+            # quota por minuto / race pontual
             if "Quota exceeded" in str(e) or "429" in str(e):
                 time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s
             else:
                 raise
 
 def gs_replace_all(sheet_name: str, df: pd.DataFrame):
-    """Substitui todo o conteúdo de uma aba pelo DataFrame atual."""
+    """Substitui toda a aba por um DataFrame (usado raramente)."""
     try:
         sh = _open_sheet()
-        ws = sh.worksheet(sheet_name)
+        try:
+            ws = sh.worksheet(sheet_name)
+        except WorksheetNotFound:
+            ensure_gs_tabs()
+            ws = sh.worksheet(sheet_name)
         ws.clear()
-        ws.update([df.columns.tolist()] + df.astype(str).values.tolist())
+        if df.empty:
+            ws.update([REQUIRED_TABS.get(sheet_name, [])])
+        else:
+            ws.update([df.columns.tolist()] + df.astype(str).values.tolist())
     except Exception as e:
         st.error(f"Erro ao atualizar aba '{sheet_name}': {e}")
 
 # ============================================================
-# 📦 Ficheiros locais (seeding + leitura robusta)
+# 📦 CSV locais (seeding + leitura robusta)
 # ============================================================
 def ensure_files():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -234,9 +213,7 @@ def ensure_files():
         )
 
 def _read_csv_flex(path: str) -> pd.DataFrame:
-    """
-    Lê CSV aceitando vírgula OU ponto e vírgula, e tenta UTF-8 → Latin-1.
-    """
+    """Lê CSV aceitando vírgula ou ponto e vírgula; tenta utf-8 depois latin-1."""
     for enc in ("utf-8", "latin-1"):
         try:
             return pd.read_csv(path, sep=None, engine="python", encoding=enc)
@@ -246,7 +223,6 @@ def _read_csv_flex(path: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=5)
 def load_players() -> pd.DataFrame:
-    """Jogadores com tolerância a separadores/encoding e nomes de colunas."""
     ensure_files()
     df = _read_csv_flex(PLAYERS_CSV)
     df.columns = [c.strip().lower() for c in df.columns]
@@ -274,7 +250,6 @@ def load_players() -> pd.DataFrame:
 
 @st.cache_data(ttl=5)
 def load_functions() -> pd.DataFrame:
-    """Funções com tolerância a separadores/encoding e nomes de colunas."""
     ensure_files()
     df = _read_csv_flex(FUNCOES_CSV)
     df.columns = [c.strip().lower() for c in df.columns]
@@ -299,7 +274,7 @@ def load_functions() -> pd.DataFrame:
     return df
 
 # ============================================================
-# 📊 Leitura/Escrita de avaliações e fechos (Sheets ou CSV)
+# 📊 Reader/Writer (Sheets bulk + CSV fallback)
 # ============================================================
 def read_avaliacoes() -> pd.DataFrame:
     if USE_SHEETS:
@@ -308,35 +283,33 @@ def read_avaliacoes() -> pd.DataFrame:
     else:
         return pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
 
+def read_fechos() -> pd.DataFrame:
+    if USE_SHEETS:
+        _, df_f = gs_read_bulk()
+        return df_f
+    else:
+        return pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
+
 def save_avaliacao(row: dict):
-    """Adiciona uma avaliação individual."""
     if USE_SHEETS:
         gs_append("avaliacoes", row)
+        # invalida cache para refletir imediatamente, se necessário
+        gs_read_bulk.clear()
     else:
         df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
         df.to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
 
-def read_fechos() -> pd.DataFrame:
-    if USE_SHEETS:
-        _, df_fech = gs_read_bulk()
-        return df_fech
-    else:
-        return pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
-
 def fechar_mes(avaliador: str, ano: int, mes: int, completos: int, total: int):
-    """Regista fecho mensal do avaliador."""
     row = {
         "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-        "ano": int(ano),
-        "mes": int(mes),
-        "avaliador": avaliador,
-        "completos": int(completos),
-        "total": int(total),
+        "ano": int(ano), "mes": int(mes),
+        "avaliador": avaliador, "completos": int(completos), "total": int(total),
         "status": "FECHADO" if completos == total else "INCOMPLETO",
     }
     if USE_SHEETS:
         gs_append("fechos", row)
+        gs_read_bulk.clear()
     else:
         df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
@@ -354,14 +327,13 @@ def trimmed_mean(vals):
     return sum(vals)/n
 
 def foto_path(player_id: int) -> str:
-    """Foto do jogador (se existir) ou placeholder."""
     p = f"assets/fotos/{player_id}.jpg"
     return p if os.path.exists(p) else "https://placehold.co/60x60?text=%20"
 
 def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id: int) -> bool:
     if df.empty:
         return False
-    m = (df["avaliador"]==avaliador) & (df["ano"]==ano) & (df["mes"]==mes) & (df["player_id"]==player_id)
+    m = (df.get("avaliador","")==avaliador) & (df.get("ano",0)==ano) & (df.get("mes",0)==mes) & (df.get("player_id",0)==player_id)
     return not df[m].empty
 
 # =========================
@@ -369,7 +341,6 @@ def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id
 # =========================
 players = load_players()
 funcs   = load_functions()
-df_all  = read_avaliacoes()
 
 top_l, top_m, top_r = st.columns([0.22, 1, 0.55], vertical_alignment="center")
 with top_l:
@@ -389,32 +360,16 @@ with top_r:
         format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize()
     )
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
-st.divider()
-with st.expander("🔧 Diagnóstico Google Sheets", expanded=False):
-    try:
-        sid = _get_sheet_id()
-        st.write("SHEET_ID efetivo:", sid)
-        sh = _open_sheet()
-        tabs = [ws.title for ws in sh.worksheets()]
-        st.success("✅ Consegui abrir a Sheet.")
-        st.write("Abas encontradas:", tabs)
-        missing = [t for t in ["avaliacoes","fechos"] if t not in tabs]
-        if missing:
-            st.warning(f"Abas em falta: {missing}. Vou tentar criá-las automaticamente.")
-            ensure_gs_tabs()
-            st.info("Abas garantidas.")
-    except Exception as e:
-        import traceback
-        st.error("❌ Erro ao abrir/validar a Sheet:")
-        st.code("".join(traceback.format_exception_only(type(e), e)))
 
-# Garante que as abas obrigatórias existem e têm cabeçalhos
+# Garante abas (1x por sessão) — evita 429
 if USE_SHEETS and not st.session_state.get("gs_tabs_ok", False):
     try:
-        ensure_gs_tabs()  # a tua função de garantir abas
+        ensure_gs_tabs()
         st.session_state["gs_tabs_ok"] = True
     except Exception as _e:
         st.warning(f"Não consegui garantir as abas no Google Sheets: {_e}")
+
+st.divider()
 
 # =========================
 # Sidebar — Perfil + Jogadores
@@ -433,6 +388,9 @@ if perfil == "Administrador":
 
 st.sidebar.markdown("---")
 st.sidebar.write("🏃 **Jogadores**")
+
+# Leitura (bulk) 1x por rerun
+df_all, df_fechos = read_avaliacoes(), read_fechos()
 
 # Progresso do avaliador no período
 completos_ids = [int(pid) for pid in players["id"].tolist() if is_completed(df_all, perfil, ano, mes, int(pid))]
@@ -477,7 +435,7 @@ with col1:
     if perfil != "Administrador":
         st.subheader("Formulário de Avaliação")
 
-        # controlos tipo “segmentos” 1-4 (com fallback)
+        # controlos 1-4 (com fallback)
         def seg(label, default=3):
             try:
                 return st.segmented_control(label, options=[1,2,3,4], default=default)
@@ -492,11 +450,7 @@ with col1:
         potencial = seg("Potencial Futuro")
 
         mult_opts = funcs["nome"].tolist()
-        fun_sel = st.multiselect(
-            "Funções (obrigatório)",
-            options=mult_opts,
-            help="Pode escolher várias."
-        )
+        fun_sel = st.multiselect("Funções (obrigatório)", options=mult_opts, help="Pode escolher várias.")
         obs = st.text_area("Observações (visível apenas ao Administrador)")
 
         can_submit = len(fun_sel) > 0
@@ -515,18 +469,16 @@ with col1:
             st.success("✅ Avaliação registada.")
             st.rerun()
 
-        # Submissão global do mês (informativo/registo)
-        df_all = read_avaliacoes()  # recarrega
+        # Submissão global do mês
+        df_all = read_avaliacoes()  # recarrega após submit
         completos_ids = [int(pid) for pid in players["id"].tolist() if is_completed(df_all, perfil, ano, mes, int(pid))]
         falta = len(players) - len(completos_ids)
         st.markdown("---")
         st.write(f"**Estado do mês:** {len(completos_ids)}/{len(players)} jogadores avaliados.")
 
-        # verificar se já existe fecho para este avaliador/periodo
-        df_fechos = read_fechos()
         ja_fechado = False
         if not df_fechos.empty:
-            m = (df_fechos.get("avaliador","") == perfil) & (df_fechos.get("ano",0) == ano) & (df_fechos.get("mes",0) == mes)
+            m = (df_fechos.get("avaliador","")==perfil) & (df_fechos.get("ano",0)==ano) & (df_fechos.get("mes",0)==mes)
             ja_fechado = not df_fechos[m].empty
 
         btn_disabled = (falta > 0) or ja_fechado
@@ -607,7 +559,7 @@ with col2:
                     vals = []
                     for d in dims:
                         vals.append(trimmed_mean(dfn[d].astype(float).tolist()) or 0)
-                    vals.append(vals[0])  # fecha o polígono
+                    vals.append(vals[0])
                     fig.add_trace(
                         go.Scatterpolar(
                             r=vals, theta=theta, fill="none",
