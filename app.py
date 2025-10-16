@@ -116,28 +116,29 @@ def ensure_gs_tabs():
             if not ws.row_values(1):
                 ws.update([header])
 
-@st.cache_data(ttl=30)
 @st.cache_data(ttl=120, show_spinner=False)
 def gs_read_bulk():
     """
-    Lê 'avaliacoes' e 'fechos' numa chamada batch (Spreadsheet.batch_get).
-    - Sem ensure de abas (evita leituras extra).
-    - TTL aumentado para 120s para reduzir chamadas e evitar 429.
-    - Tolerante a erros: em quota (429) devolve dataframes vazios (UI continua a funcionar).
+    Lê 'avaliacoes' e 'fechos' numa única chamada via Spreadsheet.values_batch_get.
+    Tolerante a quotas (429) e a abas em falta; devolve DataFrames vazios nesses casos.
     """
     sh = _open_sheet()
+
     try:
-        ranges = sh.batch_get(["avaliacoes!A1:Z", "fechos!A1:Z"])
+        # gspread 6.x: método correto é values_batch_get (NÃO batch_get)
+        res = sh.values_batch_get(ranges=["avaliacoes!A1:Z", "fechos!A1:Z"])
     except APIError as e:
         es = str(e)
         if "Quota exceeded" in es or "429" in es:
             # devolve vazio temporariamente; próxima execução pós-TTL volta a tentar
             return pd.DataFrame(), pd.DataFrame()
-        # Se a sheet existir mas uma das tabs não existir, o batch_get pode lançar 400;
-        # vamos tratar em parsing abaixo também devolvendo vazio.
+        # outros erros sobem para aparecer na UI/logs
         raise
 
-    def _to_df(values):
+    vrs = res.get("valueRanges", [])
+
+    def _to_df(vr_dict):
+        values = vr_dict.get("values", []) if isinstance(vr_dict, dict) else []
         if not values:
             return pd.DataFrame()
         header, *rows = values
@@ -145,11 +146,10 @@ def gs_read_bulk():
             return pd.DataFrame()
         return pd.DataFrame(rows, columns=header)
 
-    # ranges vem como lista de listas; se uma aba não existir, a API pode devolver lista vazia
-    df_av = _to_df(ranges[0] if len(ranges) > 0 else [])
-    df_f  = _to_df(ranges[1] if len(ranges) > 1 else [])
+    df_av = _to_df(vrs[0] if len(vrs) > 0 else {})
+    df_f  = _to_df(vrs[1] if len(vrs) > 1 else {})
 
-    # coerção básica
+    # coerção básica de tipos
     if not df_av.empty:
         for col in ["player_id","player_numero","ano","mes","encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]:
             if col in df_av.columns:
@@ -158,6 +158,7 @@ def gs_read_bulk():
         for col in ["ano","mes","completos","total"]:
             if col in df_f.columns:
                 df_f[col] = pd.to_numeric(df_f[col], errors="coerce")
+
     return df_av, df_f
 
 def gs_append(sheet_name: str, row_dict: dict) -> bool:
