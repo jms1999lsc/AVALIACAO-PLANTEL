@@ -95,6 +95,24 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# === Sidebar: logo centrado e maior ===
+st.markdown(f"""
+<style>
+/* garante centragem de qualquer imagem na sidebar */
+[data-testid="stSidebar"] img {{
+  display:block; margin:0 auto;
+}}
+/* bloco do logo + título com alinhamento central */
+.sidebar-brand {{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; margin-bottom:12px;
+}}
+.sidebar-brand .brand-title {{
+  color:{PRIMARY}; font-weight:800; font-size:16px; margin-top:6px;
+}}
+</style>
+""", unsafe_allow_html=True)
+
 # === Sidebar: lista de jogadores — alinhamento perfeito a 60px ===
 st.markdown("""
 <style>
@@ -508,12 +526,17 @@ funcs   = load_functions()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"] = set()
 
-# --- Sidebar: Branding centrado + Período + Perfil ---
+# --- Sidebar: Branding ---
 logo_path = "assets/logo.png"
 with st.sidebar:
+    st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
     if os.path.exists(logo_path):
-        st.image(logo_path, width=85)
-    st.markdown("<div class='sidebar-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
+        st.image(logo_path, width=120, clamp=True)   # <-- altera aqui o tamanho se quiseres
+    else:
+        st.image("https://placehold.co/120x120?text=Logo", width=120)
+    st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
     today = datetime.today()
     if "ano" not in st.session_state:
@@ -617,20 +640,22 @@ col1, col2 = st.columns([1.2, 2.2], gap="large")
 with col1:
     st.markdown("#### Jogador selecionado")
 
-# Cabeçalho e foto, centrados entre a sidebar e as instruções
-left_spacer, center, right_spacer = st.columns([1, 2, 1])
-with center:
-    st.markdown(
-        f"""
-        <div class="player-hero">
-            <div class="player-hero-title">
+    # Cabeçalho e foto, centrados dentro da coluna esquerda
+    left_sp, center, right_sp = st.columns([1, 2, 1])
+    with center:
+        st.markdown(
+            f"""
+            <div style="text-align:center; font-weight:700; margin:8px 0 10px 0;">
                 <span class="badge">#{int(selecionado['numero'])}</span> {selecionado['nome']}
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)
+            """,
+            unsafe_allow_html=True
+        )
+        st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)  # foto por baixo, centrada
+
+    st.markdown("---")  # separador antes do formulário
+    # ... (segue o formulário como já tens)
+
 
 st.markdown("---")
 
