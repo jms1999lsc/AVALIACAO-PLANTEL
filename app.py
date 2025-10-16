@@ -18,22 +18,77 @@ GREEN   = "#2e7d32"
 
 st.set_page_config(page_title="Leixões SC — Avaliação de Plantel", layout="wide")
 
+# --- Sidebar: Branding + Período + Perfil ---
+import base64
+
+# 🔧 CSS para sidebar mais estreita e centralizada
 st.markdown(
-    f"""
-<style>
-.block-container {{ padding-top: .6rem; }}
-h1, h2, h3, h4 {{ color: {BLACK}; }}
-.sidebar-title {{ color: {PRIMARY}; font-weight: 700; font-size: 1.1rem; margin: .25rem 0 .5rem 0; }}
-.badge {{ display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius:999px; font-size:.75rem; }}
-.player-card {{ padding:6px 6px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; }}
-.player-card:hover {{ background:#fafafa; }}
-.small {{ font-size:.85rem; color:#666; }}
-.sidebar-logo {{ display:flex; align-items:center; gap:10px; }}
-.sidebar-subtitle {{ font-size:0.92rem; color:#333; margin-top:4px; }}
-</style>
-""",
+    """
+    <style>
+    /* Sidebar mais estreita */
+    [data-testid="stSidebar"] {
+        min-width: 220px !important;
+        max-width: 220px !important;
+        background-color: #f9f9f9;
+        padding-top: 1.2rem;
+    }
+
+    /* Centralizar conteúdo dentro da sidebar */
+    [data-testid="stSidebar"] img {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    /* Texto do título centralizado e vermelho Leixões */
+    .sidebar-title {
+        text-align: center;
+        color: #d22222;
+        font-weight: 700;
+        font-size: 15px;
+        margin-top: 0.4rem;
+        margin-bottom: 1.2rem;
+    }
+
+    /* Reduzir tamanho da fonte dos controlos na sidebar */
+    [data-testid="stSidebar"] label {
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
+    }
+
+    /* Espaço entre selects */
+    [data-testid="stSidebar"] div[data-baseweb="select"] {
+        margin-bottom: 0.5rem !important;
+    }
+    </style>
+    """,
     unsafe_allow_html=True,
 )
+
+# --- Branding + Período ---
+logo_path = "assets/logo.png"
+with st.sidebar:
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=85)
+    st.markdown("<div class='sidebar-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
+
+    today = datetime.today()
+    if "ano" not in st.session_state:
+        st.session_state["ano"] = today.year
+    if "mes" not in st.session_state:
+        st.session_state["mes"] = today.month
+
+    st.session_state["ano"] = st.number_input("Ano", min_value=2024, max_value=2100,
+                                              value=st.session_state["ano"], step=1)
+    st.session_state["mes"] = st.selectbox(
+        "Mês",
+        list(range(1, 13)),
+        index=st.session_state["mes"] - 1,
+        format_func=lambda m: datetime(2000, m, 1).strftime("%B").capitalize(),
+    )
+
+ano = int(st.session_state["ano"])
+mes = int(st.session_state["mes"])
 
 # =========================
 # Caminhos e ficheiros
