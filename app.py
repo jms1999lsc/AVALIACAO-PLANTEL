@@ -45,7 +45,7 @@ FECHOS_CSV     = os.path.join(DATA_DIR, "fechos.csv")
 # ============================================================
 # 🔗 INTEGRAÇÃO COM GOOGLE SHEETS (com fallback local em CSV)
 # ============================================================
-USE_SHEETS = True  # True = usa Google Sheets / False = CSV local
+USE_SHEETS = False  # True = usa Google Sheets / False = CSV local
 
 def _get_gspread_client():
     """Constrói cliente gspread com credenciais dos secrets."""
@@ -58,12 +58,49 @@ def _get_gspread_client():
     ])
     return gspread.authorize(creds)
 
+def _get_sheet_id():
+    """Obtém o SHEET_ID dos secrets. Aceita ID puro ou URL completa."""
+    # 1) tentar dentro do bloco [gcp_service_account]
+    sid = None
+    try:
+        sid = st.secrets["gcp_service_account"].get("SHEET_ID", None)
+    except Exception:
+        pass
+    # 2) fallback para nível raiz
+    if not sid:
+        sid = st.secrets.get("SHEET_ID", None)
+    if not sid:
+        raise ValueError("SHEET_ID não encontrado nos secrets. Defina-o em [gcp_service_account].")
+
+    sid = str(sid).strip()
+
+    # aceitar URL completa e extrair o ID
+    if "docs.google.com/spreadsheets/d/" in sid:
+        # exemplo: https://docs.google.com/spreadsheets/d/<ID>/edit#gid=0
+        try:
+            sid = sid.split("/d/")[1].split("/")[0]
+        except Exception:
+            raise ValueError("Não foi possível extrair o SHEET_ID a partir da URL fornecida.")
+    return sid
+
 def _open_sheet():
+    import gspread
+    from gspread.exceptions import SpreadsheetNotFound, APIError
+
     gc = _get_gspread_client()
-    sh = gc.open_by_key(st.secrets["gcp_service_account"]["SHEET_ID"])
-    return sh
-# --- Exceções e cabeçalhos obrigatórios do Google Sheets ---
-from gspread.exceptions import WorksheetNotFound, SpreadsheetNotFound, APIError
+    sid = _get_sheet_id()
+    try:
+        return gc.open_by_key(sid)
+    except SpreadsheetNotFound as e:
+        # 404 específico — ID errado ou service account sem acesso (não partilhou)
+        raise RuntimeError(
+            "SpreadsheetNotFound (404). Verifique: "
+            "1) o SHEET_ID está correto; "
+            "2) a folha foi partilhada com a service account como Editor."
+        ) from e
+    except APIError as e:
+        # outros 404 de API
+        raise RuntimeError(f"APIError ao abrir a Sheet (possível 404). Detalhe: {e}") from e
 
 REQUIRED_TABS = {
     "avaliacoes": [
@@ -75,7 +112,9 @@ REQUIRED_TABS = {
 }
 def ensure_gs_tabs():
     """Garante que as abas exigidas existem com os cabeçalhos corretos."""
-    sh = _open_sheet()
+    from gspread.exceptions import WorksheetNotFound
+    sid = _get_sheet_id()
+    sh = _open_sheet()  # se falhar aqui, já sai com mensagem clara
     existing = {ws.title for ws in sh.worksheets()}
     for tab, header in REQUIRED_TABS.items():
         if tab not in existing:
@@ -310,6 +349,24 @@ with top_r:
     )
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 st.divider()
+with st.expander("🔧 Diagnóstico Google Sheets", expanded=False):
+    try:
+        sid = _get_sheet_id()
+        st.write("SHEET_ID efetivo:", sid)
+        sh = _open_sheet()
+        tabs = [ws.title for ws in sh.worksheets()]
+        st.success("✅ Consegui abrir a Sheet.")
+        st.write("Abas encontradas:", tabs)
+        missing = [t for t in ["avaliacoes","fechos"] if t not in tabs]
+        if missing:
+            st.warning(f"Abas em falta: {missing}. Vou tentar criá-las automaticamente.")
+            ensure_gs_tabs()
+            st.info("Abas garantidas.")
+    except Exception as e:
+        import traceback
+        st.error("❌ Erro ao abrir/validar a Sheet:")
+        st.code("".join(traceback.format_exception_only(type(e), e)))
+
 # Garante que as abas obrigatórias existem e têm cabeçalhos
 if USE_SHEETS:
     try:
