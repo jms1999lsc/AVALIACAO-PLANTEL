@@ -693,8 +693,8 @@ st.markdown("---")
 if perfil != "Administrador":
         st.subheader("Formulário de Avaliação")
 
-    # controlos 1-4 (com fallback)
-    def nota(label: str, key: str):
+# controlos 1-4 (com fallback)
+def nota(label: str, key: str):
     # Radio sem seleção inicial; devolve None até o utilizador escolher
         return st.radio(label, [1, 2, 3, 4], horizontal=True, index=None, key=key)
 
