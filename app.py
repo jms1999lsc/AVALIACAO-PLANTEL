@@ -427,24 +427,33 @@ funcs   = load_functions()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"] = set()
 
-# --- Branding + Período na sidebar ---
-if os.path.exists("assets/logo.png"):
-    st.sidebar.image("assets/logo.png", width=90)
-st.sidebar.markdown('<div class="sidebar-subtitle"><b>Leixões SC- Avaliação de Plantel</b></div>', unsafe_allow_html=True)
+# --- Branding + Período na sidebar (centrado) ---
+logo_path = "assets/logo.png"
+with st.sidebar.container():
+    col_a, col_b, col_c = st.columns([1, 2, 1])
+    with col_b:
+        if os.path.exists(logo_path):
+            st.image(logo_path, width=90)  # mantém o mesmo tamanho do print
+        st.markdown(
+            f"<div style='text-align:center; color:{PRIMARY}; font-weight:700;'>"
+            "Leixões SC- Avaliação de Plantel"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 today = datetime.today()
 if "ano" not in st.session_state: st.session_state["ano"] = today.year
 if "mes" not in st.session_state: st.session_state["mes"] = today.month
 
-st.session_state["ano"] = st.sidebar.number_input("Ano", min_value=2024, max_value=2100, value=st.session_state["ano"], step=1)
+st.session_state["ano"] = st.sidebar.number_input("Ano", min_value=2024, max_value=2100,
+                                                  value=st.session_state["ano"], step=1)
 st.session_state["mes"] = st.sidebar.selectbox(
     "Mês",
-    list(range(1,13)),
-    index=st.session_state["mes"]-1,
-    format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize()
+    list(range(1, 13)),
+    index=st.session_state["mes"] - 1,
+    format_func=lambda m: datetime(2000, m, 1).strftime("%B").capitalize(),
 )
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
-
 
 
 st.sidebar.markdown("---")
