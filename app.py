@@ -126,40 +126,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# === Alinhamento vertical nas linhas de jogador ===
-st.markdown("""
-<style>
-/* Cada linha vira um flex-row e centra o conteúdo das colunas */
-.player-row [data-testid="column"]{
-  display:flex; align-items:center;
-}
-
-/* Caixa da imagem com tamanho fixo, sem “saltar” */
-.player-img{
-  width:36px; height:36px;
-  display:flex; align-items:center; justify-content:center;
-}
-.player-img img{
-  width:36px !important; height:36px !important; object-fit:cover; border-radius:6px;
-}
-
-/* Botão numa linha só + reticências (já tinhas, mas garantimos aqui) */
-.player-item .stButton > button{
-  width:100% !important;
-  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
-  line-height:1.1rem !important; padding:0.30rem 0.50rem !important; font-size:0.92rem !important;
-}
-
-/* Pontinho de estado compacto */
-.status-dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
-.status-done{ background:#2e7d32; }
-.status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
-
-/* Espaçamento entre filas */
-.player-item{ margin-bottom:6px; }
-</style>
-""", unsafe_allow_html=True)
-
 
 # =========================
 # Caminhos e ficheiros
