@@ -98,31 +98,37 @@ st.markdown(
 # === Sidebar: lista de jogadores — fotos 44x44 alinhadas ao botão e dot ===
 st.markdown("""
 <style>
-/* cada linha com altura fixa e alinhamento vertical perfeito */
-.player-item { margin-bottom:8px; }
-.player-row { min-height:48px; }  /* dá “altura” igual à da imagem/botão */
+/* Sidebar: linha com altura estável */
+.player-item { margin-bottom:10px; }
+.player-row  { min-height:64px; }
 
-/* alinhar verticalmente o conteúdo de cada coluna */
+/* Alinhar verticalmente as colunas da linha */
 .player-row [data-testid="column"]{
-  display:flex; align-items:center;
+  display:flex; align-items:center; gap:4px;
 }
 
-/* foto 60x60 com canto arredondado */
-.player-img{ width:60px; height:60px; display:flex; align-items:center; justify-content:center; }
-.player-img img{ width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; }
-.player-row [data-testid="column"]{ display:flex; align-items:center; gap:4px; }
+/* FOTO 60x60 – alta especificidade para vencer regras antigas */
+[data-testid="stSidebar"] .player-img{
+  width:60px; height:60px;
+  display:flex; align-items:center; justify-content:center;
+}
+[data-testid="stSidebar"] .player-img img{
+  width:60px !important; height:60px !important;
+  object-fit:cover; border-radius:10px;
+}
 
-/* botão numa única linha, ocupa toda a coluna e com altura igual à da foto */
-.player-item .stButton > button{
+/* BOTÃO com a MESMA ALTURA da foto */
+[data-testid="stSidebar"] .player-item .stButton{ width:100%; }
+[data-testid="stSidebar"] .player-item .stButton > button{
   width:100% !important;
-  height:60px !important;   /* <- altura do botão igual à da imagem */
+  height:60px !important;     /* igual à foto */
   display:flex; align-items:center; justify-content:flex-start;
   white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
-  line-height:1.2rem !important; padding:0 0.55rem !important; font-size:0.94rem !important;
+  line-height:1.2rem !important; padding:0 0.60rem !important; font-size:0.96rem !important;
   margin-right:0 !important;
 }
 
-/* bolinha de estado compacta e centrada */
+/* Dot de estado */
 .status-dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
 .status-done{ background:#2e7d32; }
 .status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
@@ -573,11 +579,11 @@ for _, row in players.iterrows():
         st.markdown("<div class='player-item player-row'>", unsafe_allow_html=True)
 
         # colunas: imagem / botão / dot — sem espaço morto
-        c1, c2, c3 = st.columns([0.42, 1.78, 0.10], gap="small")
+        c1, c2, c3 = st.columns([0.55, 1.35, 0.10], gap="small")
 
         with c1:
             st.markdown("<div class='player-img'>", unsafe_allow_html=True)
-            st.image(foto, clamp=True)   # 44x44 via CSS
+            st.image(foto, width=60, clamp=True)   # 60x60 via CSS
             st.markdown("</div>", unsafe_allow_html=True)
 
         if c2.button(label, key=f"sel_{pid}"):
