@@ -1,3 +1,5 @@
+# app.py — Leixões Plataforma de Avaliação (Streamlit + Google Sheets)
+
 import os
 from datetime import datetime
 
@@ -7,9 +9,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# =====================
-# Tema / Config
-# =====================
+# =========================
+# Configuração visual/tema
+# =========================
 PRIMARY = "#d22222"   # vermelho Leixões
 BLACK   = "#111111"
 GREEN   = "#2e7d32"
@@ -31,97 +33,226 @@ h1, h2, h3, h4 {{ color: {BLACK}; }}
     unsafe_allow_html=True,
 )
 
-DATA_DIR = "data"
-AVALIACOES_CSV = os.path.join(DATA_DIR, "avaliacoes.csv")
-FECHOS_CSV     = os.path.join(DATA_DIR, "fechos.csv")
+# =========================
+# Caminhos e ficheiros
+# =========================
+DATA_DIR       = "data"
 PLAYERS_CSV    = os.path.join(DATA_DIR, "jogadores.csv")
 FUNCOES_CSV    = os.path.join(DATA_DIR, "funcoes.csv")
+AVALIACOES_CSV = os.path.join(DATA_DIR, "avaliacoes.csv")
+FECHOS_CSV     = os.path.join(DATA_DIR, "fechos.csv")
 
+# ============================================================
+# 🔗 INTEGRAÇÃO COM GOOGLE SHEETS (com fallback local em CSV)
+# ============================================================
+USE_SHEETS = True  # True = usa Google Sheets / False = CSV local
 
-# =====================
-# Helpers de dados
-# =====================
-def ensure_files():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    if not os.path.exists(AVALIACOES_CSV):
-        pd.DataFrame(
-            columns=[
-                "timestamp","ano","mes","avaliador","player_id","player_numero","player_nome",
-                "encaixe","fisicas","mentais","impacto_of","impacto_def","potencial",
-                "funcoes","observacoes",
-            ]
-        ).to_csv(AVALIACOES_CSV, index=False)
-    if not os.path.exists(FECHOS_CSV):
-        pd.DataFrame(
-            columns=["timestamp","ano","mes","avaliador","completos","total","status"]
-        ).to_csv(FECHOS_CSV, index=False)
+def _get_gspread_client():
+    """Constrói cliente gspread com credenciais dos secrets."""
+    import gspread
+    from google.oauth2.service_account import Credentials
+    sa = st.secrets["gcp_service_account"]  # precisa do bloco TOML nos Secrets
+    creds = Credentials.from_service_account_info(dict(sa), scopes=[
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ])
+    return gspread.authorize(creds)
 
-@st.cache_data(ttl=5)
-def load_players():
-    return pd.read_csv(PLAYERS_CSV)
+def _open_sheet():
+    gc = _get_gspread_client()
+    sh = gc.open_by_key(st.secrets["gcp_service_account"]["SHEET_ID"])
+    return sh
 
-@st.cache_data(ttl=5)
-def load_functions():
-    return pd.read_csv(FUNCOES_CSV)
-
-def read_avaliacoes():
-    ensure_files()
+def gs_read(sheet_name: str) -> pd.DataFrame:
+    """Lê dados de uma aba do Google Sheets."""
     try:
-        return pd.read_csv(AVALIACOES_CSV)
-    except Exception:
+        sh = _open_sheet()
+        ws = sh.worksheet(sheet_name)
+        data = ws.get_all_records()
+        df = pd.DataFrame(data)
+        return df if not df.empty else pd.DataFrame()
+    except Exception as e:
+        st.warning(f"⚠️ Falha ao ler '{sheet_name}' da Google Sheet: {e}")
         return pd.DataFrame()
 
-def save_avaliacao(row: dict):
-    df = read_avaliacoes()
-    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    df.to_csv(AVALIACOES_CSV, index=False)
-
-def read_fechos():
-    ensure_files()
+def gs_append(sheet_name: str, row_dict: dict):
+    """Adiciona uma linha (dicionário) a uma aba."""
     try:
-        return pd.read_csv(FECHOS_CSV)
-    except Exception:
-        return pd.DataFrame(columns=["timestamp","ano","mes","avaliador","completos","total","status"])
+        sh = _open_sheet()
+        ws = sh.worksheet(sheet_name)
+        header = ws.row_values(1)
+        row = [row_dict.get(col, "") for col in header]
+        ws.append_row(row, value_input_option="USER_ENTERED")
+    except Exception as e:
+        st.error(f"Erro ao gravar no Google Sheets em '{sheet_name}': {e}")
+
+def gs_replace_all(sheet_name: str, df: pd.DataFrame):
+    """Substitui todo o conteúdo de uma aba pelo DataFrame atual."""
+    try:
+        sh = _open_sheet()
+        ws = sh.worksheet(sheet_name)
+        ws.clear()
+        ws.update([df.columns.tolist()] + df.astype(str).values.tolist())
+    except Exception as e:
+        st.error(f"Erro ao atualizar aba '{sheet_name}': {e}")
+
+# ============================================================
+# 📦 Ficheiros locais (seeding + leitura robusta)
+# ============================================================
+def ensure_files():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    # avaliacoes.csv
+    if not os.path.exists(AVALIACOES_CSV):
+        pd.DataFrame(columns=[
+            "timestamp","ano","mes","avaliador","player_id","player_numero","player_nome",
+            "encaixe","fisicas","mentais","impacto_of","impacto_def","potencial",
+            "funcoes","observacoes",
+        ]).to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
+    # fechos.csv
+    if not os.path.exists(FECHOS_CSV):
+        pd.DataFrame(columns=["timestamp","ano","mes","avaliador","completos","total","status"]).to_csv(
+            FECHOS_CSV, index=False, encoding="utf-8"
+        )
+
+def _read_csv_flex(path: str) -> pd.DataFrame:
+    """
+    Lê CSV aceitando vírgula OU ponto e vírgula, e tenta UTF-8 → Latin-1.
+    """
+    for enc in ("utf-8", "latin-1"):
+        try:
+            return pd.read_csv(path, sep=None, engine="python", encoding=enc)
+        except Exception:
+            continue
+    return pd.read_csv(path)
+
+@st.cache_data(ttl=5)
+def load_players() -> pd.DataFrame:
+    """Jogadores com tolerância a separadores/encoding e nomes de colunas."""
+    ensure_files()
+    df = _read_csv_flex(PLAYERS_CSV)
+    df.columns = [c.strip().lower() for c in df.columns]
+    colmap = {}
+    for c in list(df.columns):
+        if c in ["id","player_id","identificador","id_jogador"]:
+            colmap[c] = "id"
+        elif c in ["numero","número","num","nr"]:
+            colmap[c] = "numero"
+        elif c in ["nome","jogador","player","nome_jogador"]:
+            colmap[c] = "nome"
+    df = df.rename(columns=colmap)
+    missing = [c for c in ["id","numero","nome"] if c not in df.columns]
+    if missing:
+        st.error(f"`data/jogadores.csv` inválido. Falta(m): {missing}. Esperado: id,numero,nome.")
+        st.stop()
+    df["id"] = pd.to_numeric(df["id"], errors="coerce")
+    df["numero"] = pd.to_numeric(df["numero"], errors="coerce")
+    df["nome"] = df["nome"].astype(str).str.strip()
+    df = df.dropna(subset=["id","numero","nome"]).copy()
+    df["id"] = df["id"].astype(int)
+    df["numero"] = df["numero"].astype(int)
+    df = df.drop_duplicates(subset=["id"]).sort_values("numero")
+    return df
+
+@st.cache_data(ttl=5)
+def load_functions() -> pd.DataFrame:
+    """Funções com tolerância a separadores/encoding e nomes de colunas."""
+    ensure_files()
+    df = _read_csv_flex(FUNCOES_CSV)
+    df.columns = [c.strip().lower() for c in df.columns]
+    colmap = {}
+    for c in list(df.columns):
+        if c in ["codigo","código","cod","code"]:
+            colmap[c] = "codigo"
+        elif c in ["nome","funcao","função","role"]:
+            colmap[c] = "nome"
+        elif c in ["familia","família","grupo","family"]:
+            colmap[c] = "familia"
+    df = df.rename(columns=colmap)
+    missing = [c for c in ["codigo","nome","familia"] if c not in df.columns]
+    if missing:
+        st.error(f"`data/funcoes.csv` inválido. Falta(m): {missing}. Esperado: codigo,nome,familia.")
+        st.stop()
+    df["codigo"]  = df["codigo"].astype(str).str.strip()
+    df["nome"]    = df["nome"].astype(str).str.strip()
+    df["familia"] = df["familia"].astype(str).str.strip()
+    df = df.dropna(subset=["codigo","nome"]).copy()
+    df = df.drop_duplicates(subset=["codigo"]).sort_values(["familia","nome"])
+    return df
+
+# ============================================================
+# 📊 Leitura/Escrita de avaliações e fechos (Sheets ou CSV)
+# ============================================================
+def read_avaliacoes() -> pd.DataFrame:
+    if USE_SHEETS:
+        df = gs_read("avaliacoes")
+        if df.empty:
+            return df
+        # Força coerência de tipos
+        for col in ["player_id","ano","mes","encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        return df
+    else:
+        return pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
+
+def save_avaliacao(row: dict):
+    """Adiciona uma avaliação individual."""
+    if USE_SHEETS:
+        gs_append("avaliacoes", row)
+    else:
+        df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        df.to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
+
+def read_fechos() -> pd.DataFrame:
+    if USE_SHEETS:
+        return gs_read("fechos")
+    else:
+        return pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
 
 def fechar_mes(avaliador: str, ano: int, mes: int, completos: int, total: int):
-    df = read_fechos()
-    # evita duplicados
-    mask = (df["avaliador"]==avaliador) & (df["ano"]==ano) & (df["mes"]==mes)
-    df = df[~mask]
+    """Regista fecho mensal do avaliador."""
     row = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "ano": ano, "mes": mes, "avaliador": avaliador,
-        "completos": completos, "total": total, "status": "SUBMETIDO"
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "ano": int(ano),
+        "mes": int(mes),
+        "avaliador": avaliador,
+        "completos": int(completos),
+        "total": int(total),
+        "status": "FECHADO" if completos == total else "INCOMPLETO",
     }
-    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    df.to_csv(FECHOS_CSV, index=False)
+    if USE_SHEETS:
+        gs_append("fechos", row)
+    else:
+        df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        df.to_csv(FECHOS_CSV, index=False, encoding="utf-8")
 
+# =========================
+# Regras de negócio úteis
+# =========================
 def trimmed_mean(vals):
+    """Média aparada: exclui a maior e a menor quando n>=3."""
     vals = [float(v) for v in vals if pd.notna(v)]
     n = len(vals)
-    if n == 0:
-        return None
-    if n >= 3:
-        return (sum(vals) - min(vals) - max(vals)) / (n - 2)
+    if n == 0: return None
+    if n >= 3: return (sum(vals) - min(vals) - max(vals)) / (n - 2)
     return sum(vals)/n
 
-def foto_path(player_id: int):
+def foto_path(player_id: int) -> str:
+    """Foto do jogador (se existir) ou placeholder."""
     p = f"assets/fotos/{player_id}.jpg"
-    # placeholder online; se preferires, troca por uma imagem local
     return p if os.path.exists(p) else "https://placehold.co/60x60?text=%20"
 
 def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id: int) -> bool:
-    return not df[
-        (df["avaliador"]==avaliador) &
-        (df["ano"]==ano) &
-        (df["mes"]==mes) &
-        (df["player_id"]==player_id)
-    ].empty
+    if df.empty:
+        return False
+    m = (df["avaliador"]==avaliador) & (df["ano"]==ano) & (df["mes"]==mes) & (df["player_id"]==player_id)
+    return not df[m].empty
 
-
-# =====================
-# Dados base + Topbar
-# =====================
+# =========================
+# Carregamento base + Topbar
+# =========================
 players = load_players()
 funcs   = load_functions()
 df_all  = read_avaliacoes()
@@ -146,10 +277,9 @@ with top_r:
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 st.divider()
 
-
-# =====================
+# =========================
 # Sidebar — Perfil + Jogadores
-# =====================
+# =========================
 st.sidebar.markdown('<div class="sidebar-title">Utilizador</div>', unsafe_allow_html=True)
 perfil = st.sidebar.selectbox(
     "Perfil",
@@ -177,7 +307,6 @@ selecionado_id = st.session_state["selecionado_id"]
 for _, row in players.iterrows():
     pid = int(row["id"])
     foto = foto_path(pid)
-    # “card” do jogador
     with st.sidebar.container():
         c1, c2, c3 = st.columns([0.35, 1.3, 0.6])
         c1.image(foto, width=36, clamp=True)
@@ -193,10 +322,9 @@ for _, row in players.iterrows():
 st.session_state["selecionado_id"] = selecionado_id
 selecionado = players[players["id"]==selecionado_id].iloc[0]
 
-
-# =====================
+# =========================
 # Layout principal
-# =====================
+# =========================
 col1, col2 = st.columns([1.2, 2.2], gap="large")
 
 with col1:
@@ -210,12 +338,11 @@ with col1:
     if perfil != "Administrador":
         st.subheader("Formulário de Avaliação")
 
-        # controlos tipo “segmentos” 1-4
+        # controlos tipo “segmentos” 1-4 (com fallback)
         def seg(label, default=3):
             try:
                 return st.segmented_control(label, options=[1,2,3,4], default=default)
             except Exception:
-                # fallback para versões mais antigas do streamlit
                 return st.radio(label, [1,2,3,4], horizontal=True, index=default-1)
 
         encaixe   = seg("Encaixe no Perfil Leixões")
@@ -249,24 +376,26 @@ with col1:
             st.success("✅ Avaliação registada.")
             st.rerun()
 
-        # Submissão global do mês (apenas informativo/registo)
+        # Submissão global do mês (informativo/registo)
         df_all = read_avaliacoes()  # recarrega
         completos_ids = [int(pid) for pid in players["id"].tolist() if is_completed(df_all, perfil, ano, mes, int(pid))]
         falta = len(players) - len(completos_ids)
         st.markdown("---")
         st.write(f"**Estado do mês:** {len(completos_ids)}/{len(players)} jogadores avaliados.")
-        # verificar se já foi fechado antes
+
+        # verificar se já existe fecho para este avaliador/periodo
         df_fechos = read_fechos()
-        ja_fechado = not df_fechos[
-            (df_fechos["avaliador"]==perfil) & (df_fechos["ano"]==ano) & (df_fechos["mes"]==mes)
-        ].empty
+        ja_fechado = False
+        if not df_fechos.empty:
+            m = (df_fechos.get("avaliador","") == perfil) & (df_fechos.get("ano",0) == ano) & (df_fechos.get("mes",0) == mes)
+            ja_fechado = not df_fechos[m].empty
+
         btn_disabled = (falta > 0) or ja_fechado
         if st.button("✅ Submeter mês (tudo preenchido)", type="secondary", disabled=btn_disabled,
                      help="Fica ativo quando os 25 estiverem avaliados. Regista o fecho deste período."):
             fechar_mes(perfil, ano, mes, len(completos_ids), len(players))
             st.success("📌 Mês marcado como submetido para este avaliador.")
             st.rerun()
-
 
 with col2:
     if perfil == "Administrador":
