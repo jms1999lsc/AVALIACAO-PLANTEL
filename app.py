@@ -94,6 +94,35 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+# === Ajuste visual: botões dos jogadores (bolinha encostada à direita) ===
+st.markdown("""
+<style>
+.player-wrap{ position:relative; margin-bottom:6px; }
+.player-wrap .stButton > button{
+  width:100% !important;
+  padding-right:26px !important; /* espaço para a bolinha */
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  line-height:1.1rem !important;
+  padding-top:0.35rem !important;
+  padding-bottom:0.35rem !important;
+  font-size:0.9rem !important;
+}
+.player-wrap .status-dot{
+  position:absolute;
+  right:6px;
+  top:50%;
+  transform:translateY(-50%);
+  width:12px;
+  height:12px;
+  border-radius:50%;
+}
+.status-done{ background:#2e7d32; }
+.status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
+</style>
+""", unsafe_allow_html=True)
+
 
 # =========================
 # Caminhos e ficheiros
@@ -535,17 +564,22 @@ selecionado_id = st.session_state["selecionado_id"]
 for _, row in players.iterrows():
     pid = int(row["id"])
     foto = foto_path(pid)
+    label = f"#{int(row['numero']):02d} — {row['nome']}"
+
     with st.sidebar.container():
-        c1, c2, c3 = st.columns([0.35, 1.3, 0.6])
+        c1, c2 = st.columns([0.35, 1.95], gap="small")
         c1.image(foto, width=36, clamp=True)
-        label = f"#{int(row['numero']):02d} — {row['nome']}"
-        if c2.button(label, key=f"sel_{pid}"):
-            selecionado_id = pid
-        done = pid in completos_ids
-        c3.markdown(
-            f"<span class='badge' style='border-color:{'#cfc' if done else '#eee'}; color:{GREEN if done else '#888'}'>{'🟢' if done else '—'}</span>",
-            unsafe_allow_html=True
-        )
+
+        done = completed_for_player(pid)
+        with c2:
+            st.markdown("<div class='player-wrap'>", unsafe_allow_html=True)
+            if st.button(label, key=f"sel_{pid}"):
+                selecionado_id = pid
+            st.markdown(
+                f"<span class='status-dot {'status-done' if done else 'status-pending'}'></span>",
+                unsafe_allow_html=True
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
 
 st.session_state["selecionado_id"] = selecionado_id
 selecionado = players[players["id"]==selecionado_id].iloc[0]
