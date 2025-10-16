@@ -621,7 +621,7 @@ with cM:
     st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)
 st.markdown("---")
 
-    if perfil != "Administrador":
+if perfil != "Administrador":
         st.subheader("Formulário de Avaliação")
 
         # controlos 1-4 (com fallback)
