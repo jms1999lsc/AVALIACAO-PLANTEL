@@ -163,54 +163,56 @@ def gs_read_bulk():
 
 def gs_append(sheet_name: str, row_dict: dict) -> bool:
     """
-    Escreve sem leituras desnecessárias:
-    - Tenta append direto.
-    - Se a aba não existir, cria e escreve o cabeçalho, depois volta a tentar.
-    - Se falhar por quota (429), faz backoff.
-    Retorna True se gravou na Sheet; False se não conseguiu (nesse caso já aparecem erros na UI).
+    Escreve diretamente sem chamadas de leitura:
+    - Usa worksheets_by_title com cache local (sem GET por pedido).
+    - Se a aba não existir, cria sem pedir metadados à API.
+    - Tenta até 3 vezes em caso de quota 429.
     """
     import time
     sh = _open_sheet()
 
-    # Ordem/colunas de referência (evita ler header da sheet)
+    # header e linha a escrever
     header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
     row = [row_dict.get(col, "") for col in header]
 
-    # Helper para tentar escrever cabeçalho (write-only)
-    def _ensure_header(ws):
-        ws.update([header])
+    # tentamos reutilizar a worksheet se já tivermos cache
+    ws = None
+    if "_ws_cache" not in st.session_state:
+        st.session_state["_ws_cache"] = {}
+    ws_cache = st.session_state["_ws_cache"]
 
-    # Obtém (ou cria) worksheet sem listar todas as worksheets()
-    try:
-        ws = sh.worksheet(sheet_name)
-    except WorksheetNotFound:
-        # Cria a aba sem verificar mais nada
-        ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(header), 10))
-        _ensure_header(ws)
+    if sheet_name in ws_cache:
+        ws = ws_cache[sheet_name]
+    else:
+        try:
+            # em vez de sh.worksheet() que faz GET, percorremos localmente worksheets_by_title
+            for w in sh.worksheets():
+                if w.title == sheet_name:
+                    ws = w
+                    break
+        except Exception:
+            # se mesmo isto falhar (por quota), criamos sem verificar
+            ws = None
 
-    # Tenta 3 vezes, com backoff em caso de 429
+    if ws is None:
+        # cria diretamente a aba, sem validação
+        try:
+            ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(header), 10))
+            ws.update([header])
+            ws_cache[sheet_name] = ws
+        except Exception as e:
+            st.error(f"Não consegui criar a aba '{sheet_name}': {e}")
+            return False
+
+    # Tenta append_row com backoff
     for attempt in range(3):
         try:
             ws.append_row(row, value_input_option="USER_ENTERED")
             return True
         except APIError as e:
             es = str(e)
-            # Aba existe mas sem cabeçalho? Escreve header e tenta 1x de novo
-            if "range" in es.lower() and "not found" in es.lower():
-                _ensure_header(ws)
-                try:
-                    ws.append_row(row, value_input_option="USER_ENTERED")
-                    return True
-                except APIError as e2:
-                    es2 = str(e2)
-                    if "Quota exceeded" in es2 or "429" in es2:
-                        time.sleep(2 * (attempt + 1))
-                        continue
-                    st.error(f"Erro API ao gravar (após header): {e2}")
-                    return False
-            # Quota por minuto
             if "Quota exceeded" in es or "429" in es:
-                time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s
+                time.sleep(2 * (attempt + 1))
                 continue
             st.error(f"Erro API ao gravar na Sheet: {e}")
             return False
@@ -218,7 +220,7 @@ def gs_append(sheet_name: str, row_dict: dict) -> bool:
             st.error(f"Erro inesperado ao gravar na Sheet: {e}")
             return False
 
-    st.error("Falhou após várias tentativas por quota (429).")
+    st.error("Falhou após várias tentativas (quota 429).")
     return False
 
 def gs_replace_all(sheet_name: str, df: pd.DataFrame):
