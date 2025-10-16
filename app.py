@@ -758,6 +758,7 @@ with col2:
     st.markdown(
         """
         <ol style="line-height: 1.7; font-size: 0.95rem;">
+            <li>Escolha o seu <strong>nome</strong> como Perfil em <strong>Utilizador</strong>.</li>
             <li>Escolha o <strong>jogador</strong> na barra lateral.</li>
             <li>Preencha as <strong>seis dimensões</strong> (1–4) e selecione as <strong>funções</strong> (pode escolher várias).</li>
             <li>Clique <strong>Submeter avaliação</strong> para registar o mês selecionado.</li>
