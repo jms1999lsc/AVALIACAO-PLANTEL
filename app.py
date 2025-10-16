@@ -110,6 +110,7 @@ st.markdown("""
 /* foto 60x60 com canto arredondado */
 .player-img{ width:60px; height:60px; display:flex; align-items:center; justify-content:center; }
 .player-img img{ width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; }
+.player-row [data-testid="column"]{ display:flex; align-items:center; gap:4px; }
 
 /* botão numa única linha, ocupa toda a coluna e com altura igual à da foto */
 .player-item .stButton > button{
@@ -127,6 +128,7 @@ st.markdown("""
 .status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
 </style>
 """, unsafe_allow_html=True)
+
 
 # =========================
 # Caminhos e ficheiros
