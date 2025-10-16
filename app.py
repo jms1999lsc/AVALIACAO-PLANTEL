@@ -126,6 +126,39 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# === Alinhamento vertical nas linhas de jogador ===
+st.markdown("""
+<style>
+/* Cada linha vira um flex-row e centra o conteúdo das colunas */
+.player-row [data-testid="column"]{
+  display:flex; align-items:center;
+}
+
+/* Caixa da imagem com tamanho fixo, sem “saltar” */
+.player-img{
+  width:36px; height:36px;
+  display:flex; align-items:center; justify-content:center;
+}
+.player-img img{
+  width:36px !important; height:36px !important; object-fit:cover; border-radius:6px;
+}
+
+/* Botão numa linha só + reticências (já tinhas, mas garantimos aqui) */
+.player-item .stButton > button{
+  width:100% !important;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  line-height:1.1rem !important; padding:0.30rem 0.50rem !important; font-size:0.92rem !important;
+}
+
+/* Pontinho de estado compacto */
+.status-dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
+.status-done{ background:#2e7d32; }
+.status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
+
+/* Espaçamento entre filas */
+.player-item{ margin-bottom:6px; }
+</style>
+""", unsafe_allow_html=True)
 
 # =========================
 # Caminhos e ficheiros
@@ -571,14 +604,15 @@ for _, row in players.iterrows():
     label = f"#{int(row['numero']):02d} — {row['nome']}"
 
     with st.sidebar.container():
-        st.markdown("<div class='player-item'>", unsafe_allow_html=True)
+        # wrapper que permite o CSS alinhar verticalmente as colunas
+        st.markdown("<div class='player-item player-row'>", unsafe_allow_html=True)
 
-        # 3 colunas: imagem / botão / pontinho de estado
-        c1, c2, c3 = st.columns([0.35, 1.80, 0.15], gap="small")
+        # colunas: imagem / botão / ponto de estado (quase sem espaço morto)
+        c1, c2, c3 = st.columns([0.35, 1.85, 0.10], gap="small")
 
         with c1:
             st.markdown("<div class='player-img'>", unsafe_allow_html=True)
-            st.image(foto, width=36, clamp=True)
+            st.image(foto, clamp=True)  # 36x36 forçado via CSS
             st.markdown("</div>", unsafe_allow_html=True)
 
         if c2.button(label, key=f"sel_{pid}"):
@@ -592,6 +626,7 @@ for _, row in players.iterrows():
             )
 
         st.markdown("</div>", unsafe_allow_html=True)
+
 
 st.session_state["selecionado_id"] = selecionado_id
 selecionado = players[players["id"]==selecionado_id].iloc[0]
