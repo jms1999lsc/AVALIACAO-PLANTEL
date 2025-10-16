@@ -95,44 +95,42 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# === Lista de jogadores (sidebar): fotos 44×44 + alinhamento perfeito ===
+# === Sidebar: lista de jogadores — fotos 44x44 alinhadas ao botão e dot ===
 st.markdown("""
 <style>
-/* Cada linha vira um flex-row e centra verticalmente o conteúdo das colunas */
+/* cada linha com altura fixa e alinhamento vertical perfeito */
+.player-item { margin-bottom:8px; }
+.player-row { min-height:48px; }  /* dá “altura” igual à da imagem/botão */
+
+/* alinhar verticalmente o conteúdo de cada coluna */
 .player-row [data-testid="column"]{
   display:flex; align-items:center;
 }
 
-/* Caixa da imagem com tamanho fixo 44×44 */
-.player-img{
-  width:44px; height:44px;
-  display:flex; align-items:center; justify-content:center;
-}
-.player-img img{
-  width:44px !important; height:44px !important;
-  object-fit:cover; border-radius:8px;
-}
+/* foto 44x44 com canto arredondado */
+.player-img{ width:44px; height:44px; display:flex; align-items:center; justify-content:center; }
+.player-img img{ width:44px !important; height:44px !important; object-fit:cover; border-radius:8px; }
 
-/* Botão numa única linha com reticências */
+/* botão numa única linha, ocupa toda a coluna e com altura igual à da foto */
+.player-item .stButton{ width:100%; }
 .player-item .stButton > button{
   width:100% !important;
-  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
-  line-height:1.2rem !important; padding:0.40rem 0.55rem !important; font-size:0.94rem !important;
+  height:44px !important;                 /* <— ALINHA COM A FOTO */
+  display:flex; align-items:center;       /* texto do botão centrado verticalmente */
+  justify-content:flex-start;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  line-height:1.2rem !important;
+  padding:0 0.55rem !important;
+  font-size:0.94rem !important;
   margin-right:0 !important;
 }
 
-/* Pontinho de estado compacto */
+/* bolinha de estado compacta e centrada */
 .status-dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
 .status-done{ background:#2e7d32; }
 .status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
-
-/* Espaçamento entre filas */
-.player-item{ margin-bottom:8px; }
-
-/* Título centrado no topo do formulário */
-.player-title-center{
-  text-align:center; font-weight:700; margin-bottom:8px;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -465,9 +463,9 @@ def trimmed_mean(vals):
     if n >= 3: return (sum(vals) - min(vals) - max(vals)) / (n - 2)
     return sum(vals)/n
 
-def foto_path_for(player_id: int, size: int = 36) -> str:
+def foto_path_for(player_id: int, size: int = 44) -> str:
     """
-    Devolve o caminho da foto do jogador aceitando jpg/jpeg/png/webp.
+    Devolve o caminho da foto do jogador (jpg/jpeg/png/webp).
     Se não existir, devolve um placeholder do tamanho pedido.
     """
     base = f"assets/fotos/{player_id}"
@@ -569,22 +567,21 @@ if "selecionado_id" not in st.session_state:
     st.session_state["selecionado_id"] = int(players.iloc[0].id)
 selecionado_id = st.session_state["selecionado_id"]
 
-# ---- Lista de jogadores alinhada (img 36x36 / botão / dot) ----
-# ---- Lista de jogadores alinhada (img 44x44 / botão / dot) ----
+# ---- Lista de jogadores (img 44x44 / botão / dot) ----
 for _, row in players.iterrows():
-    pid = int(row["id"])
-    foto = foto_path_for(pid, 44)
+    pid   = int(row["id"])
+    foto  = foto_path_for(pid, 44)           # usa a função abaixo (ponto 3)
     label = f"#{int(row['numero']):02d} — {row['nome']}"
 
     with st.sidebar.container():
         st.markdown("<div class='player-item player-row'>", unsafe_allow_html=True)
 
-        # 3 colunas: imagem / botão / pontinho de estado (quase sem espaço morto)
+        # colunas: imagem / botão / dot — sem espaço morto
         c1, c2, c3 = st.columns([0.42, 1.78, 0.10], gap="small")
 
         with c1:
             st.markdown("<div class='player-img'>", unsafe_allow_html=True)
-            st.image(foto, clamp=True)  # 44x44 via CSS
+            st.image(foto, clamp=True)   # 44x44 via CSS
             st.markdown("</div>", unsafe_allow_html=True)
 
         if c2.button(label, key=f"sel_{pid}"):
@@ -611,14 +608,23 @@ col1, col2 = st.columns([1.2, 2.2], gap="large")
 with col1:
     st.markdown("#### Jogador selecionado")
 
-# Cabeçalho centrado (número + nome) e foto grande por baixo
-cL, cM, cR = st.columns([1, 2, 1])
-with cM:
+# Bloco centralizado dentro de col1 (número + nome + foto por baixo)
+with st.container():
     st.markdown(
-        f"<div class='player-title-center'><span class='badge'>#{int(selecionado['numero'])}</span> {selecionado['nome']}</div>",
+        f"""
+        <div style="
+            display:flex;flex-direction:column;align-items:center;
+            gap:12px;margin:10px 0 16px 0;">
+            <div style="font-weight:700;">
+                <span class="badge">#{int(selecionado['numero'])}</span> {selecionado['nome']}
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True
     )
+    # Foto “herói” centrada (tamanho ajustável)
     st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)
+
 st.markdown("---")
 
 if perfil != "Administrador":
