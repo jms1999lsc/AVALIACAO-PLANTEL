@@ -119,37 +119,63 @@ def ensure_gs_tabs():
 @st.cache_data(ttl=120, show_spinner=False)
 def gs_read_bulk():
     """
-    Lê 'avaliacoes' e 'fechos' numa única chamada via Spreadsheet.values_batch_get.
-    Tolerante a quotas (429) e a abas em falta; devolve DataFrames vazios nesses casos.
+    Lê 'avaliacoes' e 'fechos' numa chamada (values_batch_get) e devolve DataFrames.
+    - Tolerante a quota (429): devolve vazios temporariamente.
+    - Tolerante a linhas com comprimentos diferentes: faz pad/truncate para caber no header.
     """
     sh = _open_sheet()
-
     try:
-        # gspread 6.x: método correto é values_batch_get (NÃO batch_get)
         res = sh.values_batch_get(ranges=["avaliacoes!A1:Z", "fechos!A1:Z"])
     except APIError as e:
         es = str(e)
         if "Quota exceeded" in es or "429" in es:
-            # devolve vazio temporariamente; próxima execução pós-TTL volta a tentar
             return pd.DataFrame(), pd.DataFrame()
-        # outros erros sobem para aparecer na UI/logs
         raise
 
     vrs = res.get("valueRanges", [])
 
-    def _to_df(vr_dict):
+    def _to_df_safe(vr_dict):
         values = vr_dict.get("values", []) if isinstance(vr_dict, dict) else []
         if not values:
             return pd.DataFrame()
-        header, *rows = values
+
+        # header “limpo”
+        raw_header = values[0]
+        header = [str(h).strip() for h in raw_header if h is not None]
+
         if not header:
             return pd.DataFrame()
-        return pd.DataFrame(rows, columns=header)
 
-    df_av = _to_df(vrs[0] if len(vrs) > 0 else {})
-    df_f  = _to_df(vrs[1] if len(vrs) > 1 else {})
+        rows = values[1:]
 
-    # coerção básica de tipos
+        # pad/truncate cada linha para o tamanho do header
+        fixed_rows = []
+        ncols = len(header)
+        for r in rows:
+            if r is None:
+                r = []
+            # garante que é uma lista
+            r = list(r)
+            # pad com strings vazias
+            if len(r) < ncols:
+                r = r + [""] * (ncols - len(r))
+            # truncate se tiver a mais
+            if len(r) > ncols:
+                r = r[:ncols]
+            fixed_rows.append(r)
+
+        try:
+            df = pd.DataFrame(fixed_rows, columns=header)
+        except Exception:
+            # fallback ultra-defensivo: tenta sem nomes de colunas (não deve ser preciso)
+            df = pd.DataFrame(fixed_rows)
+            df.columns = [f"col_{i+1}" for i in range(df.shape[1])]
+        return df
+
+    df_av = _to_df_safe(vrs[0] if len(vrs) > 0 else {})
+    df_f  = _to_df_safe(vrs[1] if len(vrs) > 1 else {})
+
+    # coerção básica de tipos se existirem as colunas
     if not df_av.empty:
         for col in ["player_id","player_numero","ano","mes","encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]:
             if col in df_av.columns:
