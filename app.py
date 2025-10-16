@@ -47,11 +47,11 @@ FECHOS_CSV     = os.path.join(DATA_DIR, "fechos.csv")
 # ============================================================
 USE_SHEETS = True  # True = usa Google Sheets / False = CSV local
 
+@st.cache_resource
 def _get_gspread_client():
-    """Constrói cliente gspread com credenciais dos secrets."""
     import gspread
     from google.oauth2.service_account import Credentials
-    sa = st.secrets["gcp_service_account"]  # precisa do bloco TOML nos Secrets
+    sa = st.secrets["gcp_service_account"]
     creds = Credentials.from_service_account_info(dict(sa), scopes=[
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
@@ -83,9 +83,46 @@ def _get_sheet_id():
             raise ValueError("Não foi possível extrair o SHEET_ID a partir da URL fornecida.")
     return sid
 
+@st.cache_resource
 def _open_sheet():
-    import gspread
-    from gspread.exceptions import SpreadsheetNotFound, APIError
+    gc = _get_gspread_client()
+    sid = _get_sheet_id()  # usa a tua função _get_sheet_id do patch anterior
+    return gc.open_by_key(sid)
+
+@st.cache_data(ttl=30)
+def gs_read_bulk():
+    """
+    Lê 'avaliacoes' e 'fechos' numa única ida à API (batch) e devolve dois DataFrames.
+    Cache 30s para evitar 429.
+    """
+    sh = _open_sheet()
+    # ranges largos para cobrir colunas (A a Z é suficiente para os nossos cabeçalhos)
+    res = sh.values_batch_get(ranges=["avaliacoes!A1:Z", "fechos!A1:Z"])
+    value_ranges = res.get("valueRanges", [])
+
+    def _to_df(vr):
+        values = vr.get("values", [])
+        if not values:
+            return pd.DataFrame()
+        header, *rows = values
+        if not header:
+            return pd.DataFrame()
+        return pd.DataFrame(rows, columns=header)
+
+    df_av = _to_df(value_ranges[0] if len(value_ranges) > 0 else {})
+    df_fech = _to_df(value_ranges[1] if len(value_ranges) > 1 else {})
+
+    # coerção de tipos básica
+    if not df_av.empty:
+        for col in ["player_id","player_numero","ano","mes","encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]:
+            if col in df_av.columns:
+                df_av[col] = pd.to_numeric(df_av[col], errors="coerce")
+    if not df_fech.empty:
+        for col in ["ano","mes","completos","total"]:
+            if col in df_fech.columns:
+                df_fech[col] = pd.to_numeric(df_fech[col], errors="coerce")
+
+    return df_av, df_fech
 
     gc = _get_gspread_client()
     sid = _get_sheet_id()
@@ -142,22 +179,31 @@ def gs_read(sheet_name: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 def gs_append(sheet_name: str, row_dict: dict):
-    """Adiciona linha; cria aba e cabeçalho se precisarem."""
+    import time
+    sh = _open_sheet()
     try:
-        sh = _open_sheet()
+        ws = sh.worksheet(sheet_name)
+    except WorksheetNotFound:
+        ensure_gs_tabs()
+        ws = sh.worksheet(sheet_name)
+
+    header = ws.row_values(1)
+    if not header:
+        header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
+        ws.update([header])
+
+    row = [row_dict.get(col, "") for col in header]
+
+    # tenta com pequeno backoff se der 429
+    for attempt in range(3):
         try:
-            ws = sh.worksheet(sheet_name)
-        except WorksheetNotFound:
-            ensure_gs_tabs()
-            ws = sh.worksheet(sheet_name)
-        header = ws.row_values(1)
-        if not header:
-            header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
-            ws.update([header])
-        row = [row_dict.get(col, "") for col in header]
-        ws.append_row(row, value_input_option="USER_ENTERED")
-    except Exception as e:
-        st.error(f"Erro ao gravar no Google Sheets em '{sheet_name}': {e}")
+            ws.append_row(row, value_input_option="USER_ENTERED")
+            break
+        except APIError as e:
+            if "Quota exceeded" in str(e) or "429" in str(e):
+                time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s
+            else:
+                raise
 
 def gs_replace_all(sheet_name: str, df: pd.DataFrame):
     """Substitui todo o conteúdo de uma aba pelo DataFrame atual."""
@@ -257,14 +303,8 @@ def load_functions() -> pd.DataFrame:
 # ============================================================
 def read_avaliacoes() -> pd.DataFrame:
     if USE_SHEETS:
-        df = gs_read("avaliacoes")
-        if df.empty:
-            return df
-        # Força coerência de tipos
-        for col in ["player_id","ano","mes","encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-        return df
+        df_av, _ = gs_read_bulk()
+        return df_av
     else:
         return pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
 
@@ -279,7 +319,8 @@ def save_avaliacao(row: dict):
 
 def read_fechos() -> pd.DataFrame:
     if USE_SHEETS:
-        return gs_read("fechos")
+        _, df_fech = gs_read_bulk()
+        return df_fech
     else:
         return pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
 
@@ -368,9 +409,10 @@ with st.expander("🔧 Diagnóstico Google Sheets", expanded=False):
         st.code("".join(traceback.format_exception_only(type(e), e)))
 
 # Garante que as abas obrigatórias existem e têm cabeçalhos
-if USE_SHEETS:
+if USE_SHEETS and not st.session_state.get("gs_tabs_ok", False):
     try:
-        ensure_gs_tabs()
+        ensure_gs_tabs()  # a tua função de garantir abas
+        st.session_state["gs_tabs_ok"] = True
     except Exception as _e:
         st.warning(f"Não consegui garantir as abas no Google Sheets: {_e}")
 
