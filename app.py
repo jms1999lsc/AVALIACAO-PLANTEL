@@ -696,7 +696,7 @@ if perfil != "Administrador":
     # controlos 1-4 (com fallback)
     def nota(label: str, key: str):
     # Radio sem seleção inicial; devolve None até o utilizador escolher
-    return st.radio(label, [1, 2, 3, 4], horizontal=True, index=None, key=key)
+        return st.radio(label, [1, 2, 3, 4], horizontal=True, index=None, key=key)
 
 
         encaixe   = nota("Encaixe no Perfil Leixões",       key=f"n_encaixe_{selecionado_id}_{ano}_{mes}_{perfil}")
