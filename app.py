@@ -1,5 +1,4 @@
-# app.py — Leixões Plataforma de Avaliação (Streamlit + Google Sheets, com cache e batch)
-# ------------------------------------------------------------------------------
+# app.py — Leixões SC - Avaliação de Plantel (Streamlit + Google Sheets, com cache/batch e fallback CSV)
 
 import os
 from datetime import datetime
@@ -17,18 +16,20 @@ PRIMARY = "#d22222"   # vermelho Leixões
 BLACK   = "#111111"
 GREEN   = "#2e7d32"
 
-st.set_page_config(page_title="Leixões — Avaliação", layout="wide")
+st.set_page_config(page_title="Leixões SC — Avaliação de Plantel", layout="wide")
 
 st.markdown(
     f"""
 <style>
 .block-container {{ padding-top: .6rem; }}
 h1, h2, h3, h4 {{ color: {BLACK}; }}
-.sidebar-title {{ color: {PRIMARY}; font-weight: 700; font-size: 1.1rem; margin-bottom: .5rem; }}
+.sidebar-title {{ color: {PRIMARY}; font-weight: 700; font-size: 1.1rem; margin: .25rem 0 .5rem 0; }}
 .badge {{ display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius:999px; font-size:.75rem; }}
 .player-card {{ padding:6px 6px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; }}
 .player-card:hover {{ background:#fafafa; }}
 .small {{ font-size:.85rem; color:#666; }}
+.sidebar-logo {{ display:flex; align-items:center; gap:10px; }}
+.sidebar-subtitle {{ font-size:0.92rem; color:#333; margin-top:4px; }}
 </style>
 """,
     unsafe_allow_html=True,
@@ -46,9 +47,8 @@ FECHOS_CSV     = os.path.join(DATA_DIR, "fechos.csv")
 # ============================================================
 # 🔗 GOOGLE SHEETS (com fallback local) + anti-429
 # ============================================================
-USE_SHEETS = True  # True = usa Google Sheets / False = CSV local
+USE_SHEETS = True  # Google Sheets ativo
 
-# exceções úteis
 from gspread.exceptions import WorksheetNotFound, SpreadsheetNotFound, APIError
 
 REQUIRED_TABS = {
@@ -124,14 +124,12 @@ def gs_read_bulk():
     Cache 30s para evitar 429.
     """
     sh = _open_sheet()
-
-    # Garante que as abas existem uma vez (barato; worksheets() está em cache do recurso)
+    # garantir abas (barato; worksheets() está cacheado no recurso)
     try:
         ensure_gs_tabs()
     except Exception:
         pass
 
-    # batch_get devolve lista de listas (cada range vira uma matriz)
     ranges = sh.batch_get(["avaliacoes!A1:Z", "fechos!A1:Z"])
 
     def _to_df(values):
@@ -154,9 +152,7 @@ def gs_read_bulk():
         for col in ["ano","mes","completos","total"]:
             if col in df_f.columns:
                 df_f[col] = pd.to_numeric(df_f[col], errors="coerce")
-
     return df_av, df_f
-
 
 def gs_append(sheet_name: str, row_dict: dict) -> bool:
     """
@@ -331,8 +327,12 @@ def fechar_mes(avaliador: str, ano: int, mes: int, completos: int, total: int):
         "status": "FECHADO" if completos == total else "INCOMPLETO",
     }
     if USE_SHEETS:
-        gs_append("fechos", row)
+        ok = gs_append("fechos", row)
         gs_read_bulk.clear()
+        if not ok:
+            df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
+            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+            df.to_csv(FECHOS_CSV, index=False, encoding="utf-8")
     else:
         df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
@@ -360,7 +360,7 @@ def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id
     return not df[m].empty
 
 # =========================
-# Carregamento base + Topbar
+# Carregamento base + Sidebar (branding + período)
 # =========================
 players = load_players()
 funcs   = load_functions()
@@ -372,7 +372,7 @@ if "session_completed" not in st.session_state:
 # --- Branding + Período na sidebar ---
 if os.path.exists("assets/logo.png"):
     st.sidebar.image("assets/logo.png", width=90)
-st.sidebar.markdown("### Leixões — Avaliação")
+st.sidebar.markdown('<div class="sidebar-subtitle"><b>Leixões SC- Avaliação de Plantel</b></div>', unsafe_allow_html=True)
 
 today = datetime.today()
 if "ano" not in st.session_state: st.session_state["ano"] = today.year
@@ -387,9 +387,6 @@ st.session_state["mes"] = st.sidebar.selectbox(
 )
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 
-st.sidebar.markdown("---")
-st.sidebar.markdown('<div class="sidebar-title">Utilizador</div>', unsafe_allow_html=True)
-
 # Garante abas (1x por sessão) — evita 429
 if USE_SHEETS and not st.session_state.get("gs_tabs_ok", False):
     try:
@@ -398,11 +395,7 @@ if USE_SHEETS and not st.session_state.get("gs_tabs_ok", False):
     except Exception as _e:
         st.warning(f"Não consegui garantir as abas no Google Sheets: {_e}")
 
-st.divider()
-
-# =========================
-# Sidebar — Perfil + Jogadores
-# =========================
+st.sidebar.markdown("---")
 st.sidebar.markdown('<div class="sidebar-title">Utilizador</div>', unsafe_allow_html=True)
 perfil = st.sidebar.selectbox(
     "Perfil",
@@ -421,7 +414,6 @@ st.sidebar.write("🏃 **Jogadores**")
 # Leitura (bulk) 1x por rerun
 df_all, df_fechos = read_avaliacoes(), read_fechos()
 
-# Progresso do avaliador no período
 def completed_for_player(pid: int) -> bool:
     in_session = (perfil, ano, mes, pid) in st.session_state["session_completed"]
     in_sheet = is_completed(df_all, perfil, ano, mes, pid)
@@ -452,6 +444,8 @@ for _, row in players.iterrows():
 
 st.session_state["selecionado_id"] = selecionado_id
 selecionado = players[players["id"]==selecionado_id].iloc[0]
+
+st.divider()
 
 # =========================
 # Layout principal
@@ -500,13 +494,16 @@ with col1:
                 funcoes=";".join(fun_sel), observacoes=obs.replace("\n"," ").strip()
             )
             save_avaliacao(row)
-            st.success("✅ Avaliação registada.")
+
+            # marca completo imediatamente nesta sessão
             st.session_state["session_completed"].add((perfil, ano, mes, int(selecionado["id"])))
+
+            st.success("✅ Avaliação registada.")
             st.rerun()
 
         # Submissão global do mês
         df_all = read_avaliacoes()  # recarrega após submit
-        completos_ids = [int(pid) for pid in players["id"].tolist() if is_completed(df_all, perfil, ano, mes, int(pid))]
+        completos_ids = [int(pid) for pid in players["id"].tolist() if completed_for_player(int(pid))]
         falta = len(players) - len(completos_ids)
         st.markdown("---")
         st.write(f"**Estado do mês:** {len(completos_ids)}/{len(players)} jogadores avaliados.")
