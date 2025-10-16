@@ -45,7 +45,7 @@ FECHOS_CSV     = os.path.join(DATA_DIR, "fechos.csv")
 # ============================================================
 # 🔗 INTEGRAÇÃO COM GOOGLE SHEETS (com fallback local em CSV)
 # ============================================================
-USE_SHEETS = False  # True = usa Google Sheets / False = CSV local
+USE_SHEETS = True  # True = usa Google Sheets / False = CSV local
 
 def _get_gspread_client():
     """Constrói cliente gspread com credenciais dos secrets."""
