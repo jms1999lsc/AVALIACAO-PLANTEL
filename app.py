@@ -526,16 +526,23 @@ funcs   = load_functions()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"] = set()
 
-# --- Sidebar: Branding ---
+# --- Sidebar: branding 100% centrado ---
 logo_path = "assets/logo.png"
 with st.sidebar:
-    st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=120, clamp=True)   # <-- altera aqui o tamanho se quiseres
-    else:
-        st.image("https://placehold.co/120x120?text=Logo", width=120)
-    st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    # linha do logo centrado via colunas (método mais robusto no Streamlit)
+    cL, cC, cR = st.columns([1, 2, 1])
+    with cC:
+        if os.path.exists(logo_path):
+            st.image(logo_path, width=140, clamp=True)   # <- muda 140 se quiseres maior/menor
+        else:
+            st.image("https://placehold.co/140x140?text=Logo", width=140)
+
+    # título centrado
+    st.markdown(
+        f"<div style='text-align:center; color:{PRIMARY}; font-weight:800; font-size:16px; margin:6px 0 12px;'>"
+        "Leixões SC — Avaliação de Plantel</div>",
+        unsafe_allow_html=True
+    )
 
 
     today = datetime.today()
@@ -638,7 +645,7 @@ selecionado = players[players["id"]==selecionado_id].iloc[0]
 col1, col2 = st.columns([1.2, 2.2], gap="large")
 
 with col1:
-    st.markdown("#### Jogador selecionado")
+    st.markdown("#### Jogador Selecionado")
 
     # Cabeçalho e foto, centrados dentro da coluna esquerda
     left_sp, center, right_sp = st.columns([1, 2, 1])
@@ -653,8 +660,7 @@ with col1:
         )
         st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)  # foto por baixo, centrada
 
-    st.markdown("---")  # separador antes do formulário
-    # ... (segue o formulário como já tens)
+    st.write("")  # espaço pequeno
 
 
 st.markdown("---")
