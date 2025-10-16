@@ -592,7 +592,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown('<div class="sidebar-title" style="color:#333;font-weight:700;">Utilizador</div>', unsafe_allow_html=True)
 perfil = st.sidebar.selectbox(
     "Perfil",
-    ["Avaliador 1","Avaliador 2","Avaliador 3","Avaliador 4","Avaliador 5","Avaliador 6","Avaliador 7","Administrador"]
+    ["João Nuno Fonseca","Cristiano Brito","Rúben Pinheiro","João Amorim","Pedro Campos Ribeiro","Rodrigo Weber","João Silva","Administrador"]
 )
 
 if perfil == "Administrador":
@@ -694,43 +694,23 @@ if perfil != "Administrador":
         st.subheader("Formulário de Avaliação")
 
         # controlos 1-4 (com fallback)
-        def seg(label, default=3):
-            try:
-                return st.segmented_control(label, options=[1,2,3,4], default=default)
-            except Exception:
-                return st.radio(label, [1,2,3,4], horizontal=True, index=default-1)
+       def nota(label: str, key: str):
+    # Radio sem seleção inicial; devolve None até o utilizador escolher
+    return st.radio(label, [1, 2, 3, 4], horizontal=True, index=None, key=key)
 
-        encaixe   = seg("Encaixe no Perfil Leixões")
-        fisicas   = seg("Capacidades Físicas Exigidas")
-        mentais   = seg("Capacidades Mentais Exigidas")
-        imp_of    = seg("Impacto Ofensivo na Equipa")
-        imp_def   = seg("Impacto Defensivo na Equipa")
-        potencial = seg("Potencial Futuro")
+
+        encaixe   = nota("Encaixe no Perfil Leixões",       key=f"n_encaixe_{selecionado_id}_{ano}_{mes}_{perfil}")
+        fisicas   = nota("Capacidades Físicas Exigidas",    key=f"n_fisicas_{selecionado_id}_{ano}_{mes}_{perfil}")
+        mentais   = nota("Capacidades Mentais Exigidas",    key=f"n_mentais_{selecionado_id}_{ano}_{mes}_{perfil}")
+        imp_of    = nota("Impacto Ofensivo na Equipa",      key=f"n_impof_{selecionado_id}_{ano}_{mes}_{perfil}")
+        imp_def   = nota("Impacto Defensivo na Equipa",     key=f"n_impdef_{selecionado_id}_{ano}_{mes}_{perfil}")
+        potencial = nota("Potencial Futuro",                key=f"n_pot_{selecionado_id}_{ano}_{mes}_{perfil}")
 
         mult_opts = funcs["nome"].tolist()
         fun_sel = st.multiselect("Funções (obrigatório)", options=mult_opts, help="Pode escolher várias.")
         obs = st.text_area("Observações (visível apenas ao Administrador)")
 
-        can_submit = len(fun_sel) > 0
-        if st.button("Submeter avaliação", type="primary", disabled=not can_submit):
-            row = dict(
-                timestamp=datetime.utcnow().isoformat(),
-                ano=ano, mes=mes, avaliador=perfil,
-                player_id=int(selecionado["id"]),
-                player_numero=int(selecionado["numero"]),
-                player_nome=selecionado["nome"],
-                encaixe=int(encaixe), fisicas=int(fisicas), mentais=int(mentais),
-                impacto_of=int(imp_of), impacto_def=int(imp_def), potencial=int(potencial),
-                funcoes=";".join(fun_sel), observacoes=obs.replace("\n"," ").strip()
-            )
-            save_avaliacao(row)
-
-            # marca completo imediatamente nesta sessão
-            st.session_state["session_completed"].add((perfil, ano, mes, int(selecionado["id"])))
-
-            st.success("✅ Avaliação registada.")
-            st.rerun()
-
+        can_submit
         # Submissão global do mês
         df_all = read_avaliacoes()  # recarrega após submit (cache limpa na escrita)
         completos_ids = [int(pid) for pid in players["id"].tolist() if completed_for_player(int(pid))]
