@@ -26,8 +26,8 @@ st.markdown(
     <style>
     /* Sidebar mais estreita e com fundo leve */
     [data-testid="stSidebar"] {{
-        min-width: 315px !important;
-        max-width: 315px !important;
+        min-width: 220px !important;
+        max-width: 220px !important;
         background-color: #f3f3f3;
         padding-top: 1.0rem;
         padding-left: 0.6rem;
@@ -677,4 +677,112 @@ with col2:
             filt_mes = st.selectbox("Mês", meses_disp, index=len(meses_disp)-1,
                                     format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize())
 
-        df_m_
+        df_m = df[(df["ano"]==filt_ano) & (df["mes"]==filt_mes)]
+        st.markdown(f"**Período:** {datetime(2000,filt_mes,1).strftime('%B').capitalize()} {filt_ano}")
+
+        if df_m.empty:
+            st.info("Sem submissões para este período.")
+        else:
+            dims = ["encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]
+            rows = []
+            for pid, g in df_m.groupby("player_id"):
+                rec = {
+                    "player_id": int(pid),
+                    "player_numero": int(g.iloc[0]["player_numero"]),
+                    "player_nome": g.iloc[0]["player_nome"],
+                }
+                medias = []
+                for d in dims:
+                    val = trimmed_mean(g[d].astype(float).tolist())
+                    rec[f"media_{d}"] = val
+                    if val is not None:
+                        medias.append(val)
+                rec["media_global"] = float(np.mean(medias)) if medias else None
+                rec["n_usadas"] = max(0, len(g)-2) if len(g)>=3 else len(g)
+                rows.append(rec)
+            agg = pd.DataFrame(rows).sort_values(["media_global","player_numero"], ascending=[False, True])
+
+            st.markdown("#### Tabela de médias aparadas (por jogador)")
+            st.dataframe(agg, use_container_width=True)
+
+            csv_bytes = agg.to_csv(index=False).encode()
+            st.download_button("📤 Exportar CSV do período", data=csv_bytes,
+                               file_name=f"agregados_{filt_ano}_{filt_mes}.csv", mime="text/csv")
+
+            st.markdown("---")
+            st.markdown("#### Média global por jogador (barras)")
+            chart = alt.Chart(agg).mark_bar(color=PRIMARY).encode(
+                x=alt.X("player_nome:N", sort="-y", title="Jogador"),
+                y=alt.Y("media_global:Q", title="Média Global (1–4)"),
+                tooltip=["player_nome","media_global"]
+            ).properties(height=320)
+            st.altair_chart(chart, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("#### Radar: comparação por jogador ao longo dos meses")
+            pj = st.selectbox("Jogador", agg["player_nome"].tolist())
+            meses_unicos = sorted(df[df["ano"]==filt_ano]["mes"].unique().tolist())
+            meses_sel = st.multiselect("Meses a comparar", meses_unicos, default=[filt_mes])
+            if meses_sel:
+                categories = ["Encaixe","Cap. Físicas","Cap. Mentais","Imp. Ofensivo","Imp. Defensivo","Potencial"]
+                theta = categories + categories[:1]
+                fig = go.Figure()
+                for msel in meses_sel:
+                    dfn = df[(df["ano"]==filt_ano) & (df["mes"]==msel) & (df["player_nome"]==pj)]
+                    if dfn.empty:
+                        continue
+                    vals = []
+                    for d in dims:
+                        vals.append(trimmed_mean(dfn[d].astype(float).tolist()) or 0)
+                    vals.append(vals[0])
+                    fig.add_trace(
+                        go.Scatterpolar(
+                            r=vals, theta=theta, fill="none",
+                            name=f"{datetime(2000,msel,1).strftime('%B').capitalize()}-{str(filt_ano)[-2:]}",
+                            line=dict(color=PRIMARY)
+                        )
+                    )
+                fig.update_layout(
+                    polar=dict(radialaxis=dict(visible=True, range=[0,4], tickvals=[1,2,3,4])),
+                    showlegend=True, height=450
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("#### Evolução mensal da média global (linha)")
+            pj2 = st.selectbox("Jogador (evolução)", agg["player_nome"].tolist(), key="evol")
+            evol_rows = []
+            for msel in sorted(df[df["ano"]==filt_ano]["mes"].unique().tolist()):
+                dfn = df[(df["ano"]==filt_ano) & (df["mes"]==msel) & (df["player_nome"]==pj2)]
+                if dfn.empty:
+                    continue
+                medias = []
+                for d in dims:
+                    val = trimmed_mean(dfn[d].astype(float).tolist())
+                    if val is not None:
+                        medias.append(val)
+                if medias:
+                    evol_rows.append({"mes": int(msel), "media_global": float(np.mean(medias))})
+            if evol_rows:
+                e = pd.DataFrame(evol_rows).sort_values("mes")
+                e["Mes"] = e["mes"].apply(lambda m: datetime(2000,m,1).strftime("%b").capitalize())
+                line = alt.Chart(e).mark_line(point=True, color=PRIMARY).encode(
+                    x=alt.X("Mes:N", sort=None),
+                    y=alt.Y("media_global:Q", title="Média Global"),
+                    tooltip=["Mes","media_global"]
+                ).properties(height=260)
+                st.altair_chart(line, use_container_width=True)
+            else:
+                st.info("Sem dados suficientes para evolução.")
+    else:
+        st.subheader("Instruções")
+        st.write(
+            """
+        1. Escolha o **jogador** na barra lateral.
+        2. Preencha as **seis dimensões** (1–4) e selecione as **funções** (pode escolher várias).
+        3. Clique **Submeter avaliação** para registar o mês selecionado.
+
+        *As submissões ficam visíveis apenas ao **Administrador**.
+        O botão **Submeter mês** só ativa quando os **25/25** estiverem preenchidos.*
+        """
+        )
