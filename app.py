@@ -1,5 +1,5 @@
 # app.py — Leixões SC — Avaliação de Plantel
-# Streamlit + Google Sheets (cache, batch-read, write-first) + UI afinada
+# Streamlit + Google Sheets (cache, batch-read, write-first) + UI afinada e alinhada
 
 import os
 from datetime import datetime
@@ -27,7 +27,7 @@ st.markdown(
     /* Sidebar mais estreita e com fundo leve */
     [data-testid="stSidebar"] {{
         min-width: 220px !important;
-        max-width: 475px !important;
+        max-width: 220px !important;
         background-color: #f3f3f3;
         padding-top: 1.0rem;
         padding-left: 0.6rem;
@@ -95,41 +95,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# === Ajuste visual: lista de jogadores ===
+# === Ajuste visual: lista de jogadores (uma linha, fotos alinhadas, sem espaço morto) ===
 st.markdown("""
 <style>
-/* botão ocupa a largura toda da coluna e fica numa linha com reticências */
-.player-item .stButton > button{
-  width:100% !important;
-  white-space:nowrap !important;
-  overflow:hidden !important;
-  text-overflow:ellipsis !important;
-  line-height:1.1rem !important;
-  padding:0.30rem 0.50rem !important;
-  font-size:0.92rem !important;
-  margin-right:0 !important;
-}
-
-/* pontinho de estado compacto */
-.status-dot{
-  width:12px; height:12px; border-radius:50%;
-  display:inline-block;
-}
-.status-done{ background:#2e7d32; }
-.status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
-
-/* reduzir o espaçamento vertical entre itens */
-.player-item{ margin-bottom:6px; }
-
-/* opcional: comprimir um pouco a coluna da imagem */
-.player-img img{ display:block; }
-</style>
-""", unsafe_allow_html=True)
-
-# === Alinhamento vertical nas linhas de jogador ===
-st.markdown("""
-<style>
-/* Cada linha vira um flex-row e centra o conteúdo das colunas */
+/* Cada linha vira um flex-row e centra verticalmente o conteúdo das colunas */
 .player-row [data-testid="column"]{
   display:flex; align-items:center;
 }
@@ -143,11 +112,12 @@ st.markdown("""
   width:36px !important; height:36px !important; object-fit:cover; border-radius:6px;
 }
 
-/* Botão numa linha só + reticências (já tinhas, mas garantimos aqui) */
+/* Botão ocupa a largura toda e fica numa única linha com reticências */
 .player-item .stButton > button{
   width:100% !important;
   white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
   line-height:1.1rem !important; padding:0.30rem 0.50rem !important; font-size:0.92rem !important;
+  margin-right:0 !important;
 }
 
 /* Pontinho de estado compacto */
@@ -234,7 +204,6 @@ def gs_read_bulk():
     """
     sh = _open_sheet()
     try:
-        # gspread 6.x: método correto é values_batch_get (NÃO batch_get)
         res = sh.values_batch_get(ranges=["avaliacoes!A1:Z", "fechos!A1:Z"])
     except APIError as e:
         es = str(e)
@@ -304,7 +273,6 @@ def gs_append(sheet_name: str, row_dict: dict) -> bool:
     ws = ws_cache.get(sheet_name, None)
     if ws is None:
         try:
-            # evita chamadas extras; tenta encontrar localmente
             for w in sh.worksheets():
                 if w.title == sheet_name:
                     ws = w
@@ -344,7 +312,6 @@ def gs_replace_all(sheet_name: str, df: pd.DataFrame):
     try:
         sh = _open_sheet()
         try:
-            # Evita leituras extras: tenta cache
             if "_ws_cache" in st.session_state and sheet_name in st.session_state["_ws_cache"]:
                 ws = st.session_state["_ws_cache"][sheet_name]
             else:
@@ -494,8 +461,8 @@ def trimmed_mean(vals):
 
 def foto_path(player_id: int) -> str:
     p = f"assets/fotos/{player_id}.jpg"
-    # placeholder mais pequeno (36x36) para alinhar com o botão
-    return p if os.path.exists(p) else "https://placehold.co/60x60/cccccc/ffffff?text=%20"
+    # placeholder 36x36 para alinhar com o botão
+    return p if os.path.exists(p) else "https://placehold.co/36x36/cccccc/ffffff?text=%20"
 
 def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id: int) -> bool:
     """Verifica se já existe avaliação para determinado jogador/avaliador/mês (tolerante a df vazio)."""
@@ -525,21 +492,12 @@ funcs   = load_functions()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"] = set()
 
-# --- Sidebar: Branding centrado + Período ---
+# --- Sidebar: Branding centrado + Período + Perfil ---
 logo_path = "assets/logo.png"
 with st.sidebar:
-    st.markdown(
-        f"""
-        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
-            <img src="{logo_path if os.path.exists(logo_path) else 'https://placehold.co/90x90'}"
-                 style="width:90px; height:auto; display:block; margin:0 auto;" />
-            <div style="margin-top:6px; color:{PRIMARY}; font-weight:800; font-size:15px;">
-                Leixões SC — Avaliação de Plantel
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=85)
+    st.markdown("<div class='sidebar-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
 
     today = datetime.today()
     if "ano" not in st.session_state:
@@ -598,21 +556,21 @@ if "selecionado_id" not in st.session_state:
     st.session_state["selecionado_id"] = int(players.iloc[0].id)
 selecionado_id = st.session_state["selecionado_id"]
 
+# ---- Lista de jogadores alinhada (img 36x36 / botão / dot) ----
 for _, row in players.iterrows():
     pid = int(row["id"])
     foto = foto_path(pid)
     label = f"#{int(row['numero']):02d} — {row['nome']}"
 
     with st.sidebar.container():
-        # wrapper que permite o CSS alinhar verticalmente as colunas
         st.markdown("<div class='player-item player-row'>", unsafe_allow_html=True)
 
-        # colunas: imagem / botão / ponto de estado (quase sem espaço morto)
+        # 3 colunas: imagem / botão / pontinho de estado (sem espaço morto)
         c1, c2, c3 = st.columns([0.35, 1.85, 0.10], gap="small")
 
         with c1:
             st.markdown("<div class='player-img'>", unsafe_allow_html=True)
-            st.image(foto, clamp=True)  # 36x36 forçado via CSS
+            st.image(foto, clamp=True)  # 36x36 via CSS
             st.markdown("</div>", unsafe_allow_html=True)
 
         if c2.button(label, key=f"sel_{pid}"):
@@ -626,7 +584,6 @@ for _, row in players.iterrows():
             )
 
         st.markdown("</div>", unsafe_allow_html=True)
-
 
 st.session_state["selecionado_id"] = selecionado_id
 selecionado = players[players["id"]==selecionado_id].iloc[0]
@@ -720,112 +677,4 @@ with col2:
             filt_mes = st.selectbox("Mês", meses_disp, index=len(meses_disp)-1,
                                     format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize())
 
-        df_m = df[(df["ano"]==filt_ano) & (df["mes"]==filt_mes)]
-        st.markdown(f"**Período:** {datetime(2000,filt_mes,1).strftime('%B').capitalize()} {filt_ano}")
-
-        if df_m.empty:
-            st.info("Sem submissões para este período.")
-        else:
-            dims = ["encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]
-            rows = []
-            for pid, g in df_m.groupby("player_id"):
-                rec = {
-                    "player_id": int(pid),
-                    "player_numero": int(g.iloc[0]["player_numero"]),
-                    "player_nome": g.iloc[0]["player_nome"],
-                }
-                medias = []
-                for d in dims:
-                    val = trimmed_mean(g[d].astype(float).tolist())
-                    rec[f"media_{d}"] = val
-                    if val is not None:
-                        medias.append(val)
-                rec["media_global"] = float(np.mean(medias)) if medias else None
-                rec["n_usadas"] = max(0, len(g)-2) if len(g)>=3 else len(g)
-                rows.append(rec)
-            agg = pd.DataFrame(rows).sort_values(["media_global","player_numero"], ascending=[False, True])
-
-            st.markdown("#### Tabela de médias aparadas (por jogador)")
-            st.dataframe(agg, use_container_width=True)
-
-            csv_bytes = agg.to_csv(index=False).encode()
-            st.download_button("📤 Exportar CSV do período", data=csv_bytes,
-                               file_name=f"agregados_{filt_ano}_{filt_mes}.csv", mime="text/csv")
-
-            st.markdown("---")
-            st.markdown("#### Média global por jogador (barras)")
-            chart = alt.Chart(agg).mark_bar(color=PRIMARY).encode(
-                x=alt.X("player_nome:N", sort="-y", title="Jogador"),
-                y=alt.Y("media_global:Q", title="Média Global (1–4)"),
-                tooltip=["player_nome","media_global"]
-            ).properties(height=320)
-            st.altair_chart(chart, use_container_width=True)
-
-            st.markdown("---")
-            st.markdown("#### Radar: comparação por jogador ao longo dos meses")
-            pj = st.selectbox("Jogador", agg["player_nome"].tolist())
-            meses_unicos = sorted(df[df["ano"]==filt_ano]["mes"].unique().tolist())
-            meses_sel = st.multiselect("Meses a comparar", meses_unicos, default=[filt_mes])
-            if meses_sel:
-                categories = ["Encaixe","Cap. Físicas","Cap. Mentais","Imp. Ofensivo","Imp. Defensivo","Potencial"]
-                theta = categories + categories[:1]
-                fig = go.Figure()
-                for msel in meses_sel:
-                    dfn = df[(df["ano"]==filt_ano) & (df["mes"]==msel) & (df["player_nome"]==pj)]
-                    if dfn.empty:
-                        continue
-                    vals = []
-                    for d in dims:
-                        vals.append(trimmed_mean(dfn[d].astype(float).tolist()) or 0)
-                    vals.append(vals[0])
-                    fig.add_trace(
-                        go.Scatterpolar(
-                            r=vals, theta=theta, fill="none",
-                            name=f"{datetime(2000,msel,1).strftime('%B').capitalize()}-{str(filt_ano)[-2:]}",
-                            line=dict(color=PRIMARY)
-                        )
-                    )
-                fig.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=[0,4], tickvals=[1,2,3,4])),
-                    showlegend=True, height=450
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-            st.markdown("---")
-            st.markdown("#### Evolução mensal da média global (linha)")
-            pj2 = st.selectbox("Jogador (evolução)", agg["player_nome"].tolist(), key="evol")
-            evol_rows = []
-            for msel in sorted(df[df["ano"]==filt_ano]["mes"].unique().tolist()):
-                dfn = df[(df["ano"]==filt_ano) & (df["mes"]==msel) & (df["player_nome"]==pj2)]
-                if dfn.empty:
-                    continue
-                medias = []
-                for d in dims:
-                    val = trimmed_mean(dfn[d].astype(float).tolist())
-                    if val is not None:
-                        medias.append(val)
-                if medias:
-                    evol_rows.append({"mes": int(msel), "media_global": float(np.mean(medias))})
-            if evol_rows:
-                e = pd.DataFrame(evol_rows).sort_values("mes")
-                e["Mes"] = e["mes"].apply(lambda m: datetime(2000,m,1).strftime("%b").capitalize())
-                line = alt.Chart(e).mark_line(point=True, color=PRIMARY).encode(
-                    x=alt.X("Mes:N", sort=None),
-                    y=alt.Y("media_global:Q", title="Média Global"),
-                    tooltip=["Mes","media_global"]
-                ).properties(height=260)
-                st.altair_chart(line, use_container_width=True)
-            else:
-                st.info("Sem dados suficientes para evolução.")
-    else:
-        st.subheader("Instruções")
-        st.write(
-            """
-        1. Escolha o **jogador** na barra lateral.
-        2. Preencha as **seis dimensões** (1–4) e selecione as **funções** (pode escolher várias).
-        3. Clique **Submeter avaliação** para registar o mês selecionado.
-
-        *As submissões ficam visíveis apenas ao **Administrador**.
-        O botão **Submeter mês** só ativa quando os **25/25** estiverem preenchidos.*
-        """
-        )
+        df_m_
