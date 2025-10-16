@@ -107,15 +107,15 @@ st.markdown("""
   display:flex; align-items:center;
 }
 
-/* foto 44x44 com canto arredondado */
-.player-img{ width:44px; height:44px; display:flex; align-items:center; justify-content:center; }
-.player-img img{ width:44px !important; height:44px !important; object-fit:cover; border-radius:8px; }
+/* foto 60x60 com canto arredondado */
+.player-img{ width:60px; height:60px; display:flex; align-items:center; justify-content:center; }
+.player-img img{ width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; }
 
 /* botão numa única linha, ocupa toda a coluna e com altura igual à da foto */
 .player-item .stButton{ width:100%; }
 .player-item .stButton > button{
   width:100% !important;
-  height:44px !important;                 /* <— ALINHA COM A FOTO */
+  height:60px !important;                 /* <— ALINHA COM A FOTO */
   display:flex; align-items:center;       /* texto do botão centrado verticalmente */
   justify-content:flex-start;
   white-space:nowrap !important;
@@ -570,7 +570,7 @@ selecionado_id = st.session_state["selecionado_id"]
 # ---- Lista de jogadores (img 44x44 / botão / dot) ----
 for _, row in players.iterrows():
     pid   = int(row["id"])
-    foto  = foto_path_for(pid, 44)           # usa a função abaixo (ponto 3)
+    foto  = foto_path_for(pid, 60)           # usa a função abaixo (ponto 3)
     label = f"#{int(row['numero']):02d} — {row['nome']}"
 
     with st.sidebar.container():
