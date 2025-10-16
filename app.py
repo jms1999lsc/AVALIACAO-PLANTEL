@@ -112,18 +112,12 @@ st.markdown("""
 .player-img img{ width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; }
 
 /* botão numa única linha, ocupa toda a coluna e com altura igual à da foto */
-.player-item .stButton{ width:100%; }
 .player-item .stButton > button{
   width:100% !important;
-  height:60px !important;                 /* <— ALINHA COM A FOTO */
-  display:flex; align-items:center;       /* texto do botão centrado verticalmente */
-  justify-content:flex-start;
-  white-space:nowrap !important;
-  overflow:hidden !important;
-  text-overflow:ellipsis !important;
-  line-height:1.2rem !important;
-  padding:0 0.55rem !important;
-  font-size:0.94rem !important;
+  height:60px !important;   /* <- altura do botão igual à da imagem */
+  display:flex; align-items:center; justify-content:flex-start;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  line-height:1.2rem !important; padding:0 0.55rem !important; font-size:0.94rem !important;
   margin-right:0 !important;
 }
 
