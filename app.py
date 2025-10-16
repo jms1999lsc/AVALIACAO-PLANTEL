@@ -460,9 +460,14 @@ def trimmed_mean(vals):
     return sum(vals)/n
 
 def foto_path(player_id: int) -> str:
-    p = f"assets/fotos/{player_id}.jpg"
+    """Devolve o caminho da foto do jogador (aceita jpg/jpeg/png/webp)."""
+    base = f"assets/fotos/{player_id}"
+    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+        p = base + ext
+        if os.path.exists(p):
+            return p
     # placeholder 36x36 para alinhar com o botão
-    return p if os.path.exists(p) else "https://placehold.co/36x36/cccccc/ffffff?text=%20"
+    return "https://placehold.co/36x36/cccccc/ffffff?text=%20"
 
 def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id: int) -> bool:
     """Verifica se já existe avaliação para determinado jogador/avaliador/mês (tolerante a df vazio)."""
