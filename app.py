@@ -119,15 +119,22 @@ def ensure_gs_tabs():
 @st.cache_data(ttl=30)
 def gs_read_bulk():
     """
-    Lê 'avaliacoes' e 'fechos' numa única chamada (batch) e devolve dois DataFrames.
-    Cache 30s para evitar 429 (quota por minuto).
+    Lê 'avaliacoes' e 'fechos' numa única ida à API (batch) e devolve dois DataFrames.
+    Usa Spreadsheet.batch_get (método correto no gspread).
+    Cache 30s para evitar 429.
     """
     sh = _open_sheet()
-    res = sh.values_batch_get(ranges=["avaliacoes!A1:Z", "fechos!A1:Z"])
-    vrs = res.get("valueRanges", [])
 
-    def _to_df(vr):
-        values = vr.get("values", []) if isinstance(vr, dict) else []
+    # Garante que as abas existem uma vez (barato; worksheets() está em cache do recurso)
+    try:
+        ensure_gs_tabs()
+    except Exception:
+        pass
+
+    # batch_get devolve lista de listas (cada range vira uma matriz)
+    ranges = sh.batch_get(["avaliacoes!A1:Z", "fechos!A1:Z"])
+
+    def _to_df(values):
         if not values:
             return pd.DataFrame()
         header, *rows = values
@@ -135,8 +142,8 @@ def gs_read_bulk():
             return pd.DataFrame()
         return pd.DataFrame(rows, columns=header)
 
-    df_av = _to_df(vrs[0] if len(vrs) > 0 else {})
-    df_f  = _to_df(vrs[1] if len(vrs) > 1 else {})
+    df_av = _to_df(ranges[0] if len(ranges) > 0 else [])
+    df_f  = _to_df(ranges[1] if len(ranges) > 1 else [])
 
     # coerção básica
     if not df_av.empty:
@@ -147,35 +154,46 @@ def gs_read_bulk():
         for col in ["ano","mes","completos","total"]:
             if col in df_f.columns:
                 df_f[col] = pd.to_numeric(df_f[col], errors="coerce")
+
     return df_av, df_f
 
-def gs_append(sheet_name: str, row_dict: dict):
-    """Adiciona linha; cria aba/cabeçalho se necessário e faz backoff em 429."""
+
+def gs_append(sheet_name: str, row_dict: dict) -> bool:
+    """
+    Adiciona linha; cria aba/cabeçalho se necessário. Backoff em 429.
+    Retorna True se gravou na Sheet; False se falhou (e já terá mostrado o erro).
+    """
     import time
     sh = _open_sheet()
     try:
-        ws = sh.worksheet(sheet_name)
-    except WorksheetNotFound:
-        ensure_gs_tabs()
-        ws = sh.worksheet(sheet_name)
-
-    header = ws.row_values(1)
-    if not header:
-        header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
-        ws.update([header])
-
-    row = [row_dict.get(col, "") for col in header]
-
-    for attempt in range(3):
         try:
-            ws.append_row(row, value_input_option="USER_ENTERED")
-            break
-        except APIError as e:
-            # quota por minuto / race pontual
-            if "Quota exceeded" in str(e) or "429" in str(e):
-                time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s
-            else:
-                raise
+            ws = sh.worksheet(sheet_name)
+        except WorksheetNotFound:
+            ensure_gs_tabs()
+            ws = sh.worksheet(sheet_name)
+
+        header = ws.row_values(1)
+        if not header:
+            header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
+            ws.update([header])
+
+        row = [row_dict.get(col, "") for col in header]
+
+        for attempt in range(3):
+            try:
+                ws.append_row(row, value_input_option="USER_ENTERED")
+                return True
+            except APIError as e:
+                if "Quota exceeded" in str(e) or "429" in str(e):
+                    time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s
+                else:
+                    st.error(f"Erro API ao gravar na Sheet: {e}")
+                    return False
+        st.error("Falhou após várias tentativas por quota (429).")
+        return False
+    except Exception as e:
+        st.error(f"Erro inesperado ao gravar na Sheet: {e}")
+        return False
 
 def gs_replace_all(sheet_name: str, df: pd.DataFrame):
     """Substitui toda a aba por um DataFrame (usado raramente)."""
@@ -292,9 +310,14 @@ def read_fechos() -> pd.DataFrame:
 
 def save_avaliacao(row: dict):
     if USE_SHEETS:
-        gs_append("avaliacoes", row)
-        # invalida cache para refletir imediatamente, se necessário
+        ok = gs_append("avaliacoes", row)
+        # invalida cache para refletir imediatamente
         gs_read_bulk.clear()
+        if not ok:
+            # fallback: guarda localmente para não perder dados
+            df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
+            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+            df.to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
     else:
         df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
@@ -342,24 +365,30 @@ def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id
 players = load_players()
 funcs   = load_functions()
 
-top_l, top_m, top_r = st.columns([0.22, 1, 0.55], vertical_alignment="center")
-with top_l:
-    if os.path.exists("assets/logo.png"):
-        st.image("assets/logo.png", width=70)
-with top_m:
-    st.markdown("### Leixões — Plataforma de Avaliação")
-with top_r:
-    today = datetime.today()
-    if "ano" not in st.session_state: st.session_state["ano"] = today.year
-    if "mes" not in st.session_state: st.session_state["mes"] = today.month
-    st.session_state["ano"] = st.number_input("Ano", min_value=2024, max_value=2100, value=st.session_state["ano"], step=1)
-    st.session_state["mes"] = st.selectbox(
-        "Mês",
-        list(range(1,13)),
-        index=st.session_state["mes"]-1,
-        format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize()
-    )
+# memória local de avaliações feitas nesta sessão (perfil, ano, mes, player_id)
+if "session_completed" not in st.session_state:
+    st.session_state["session_completed"] = set()
+
+# --- Branding + Período na sidebar ---
+if os.path.exists("assets/logo.png"):
+    st.sidebar.image("assets/logo.png", width=90)
+st.sidebar.markdown("### Leixões — Avaliação")
+
+today = datetime.today()
+if "ano" not in st.session_state: st.session_state["ano"] = today.year
+if "mes" not in st.session_state: st.session_state["mes"] = today.month
+
+st.session_state["ano"] = st.sidebar.number_input("Ano", min_value=2024, max_value=2100, value=st.session_state["ano"], step=1)
+st.session_state["mes"] = st.sidebar.selectbox(
+    "Mês",
+    list(range(1,13)),
+    index=st.session_state["mes"]-1,
+    format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize()
+)
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
+
+st.sidebar.markdown("---")
+st.sidebar.markdown('<div class="sidebar-title">Utilizador</div>', unsafe_allow_html=True)
 
 # Garante abas (1x por sessão) — evita 429
 if USE_SHEETS and not st.session_state.get("gs_tabs_ok", False):
@@ -393,7 +422,12 @@ st.sidebar.write("🏃 **Jogadores**")
 df_all, df_fechos = read_avaliacoes(), read_fechos()
 
 # Progresso do avaliador no período
-completos_ids = [int(pid) for pid in players["id"].tolist() if is_completed(df_all, perfil, ano, mes, int(pid))]
+def completed_for_player(pid: int) -> bool:
+    in_session = (perfil, ano, mes, pid) in st.session_state["session_completed"]
+    in_sheet = is_completed(df_all, perfil, ano, mes, pid)
+    return in_session or in_sheet
+
+completos_ids = [int(pid) for pid in players["id"].tolist() if completed_for_player(int(pid))]
 st.sidebar.progress(len(completos_ids)/len(players), text=f"Completos: {len(completos_ids)}/{len(players)}")
 
 # Seleção do jogador
@@ -467,6 +501,7 @@ with col1:
             )
             save_avaliacao(row)
             st.success("✅ Avaliação registada.")
+            st.session_state["session_completed"].add((perfil, ano, mes, int(selecionado["id"])))
             st.rerun()
 
         # Submissão global do mês
