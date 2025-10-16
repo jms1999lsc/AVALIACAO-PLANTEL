@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import base64
 
 # =========================
 # Configuração visual/tema
@@ -18,8 +19,6 @@ GREEN   = "#2e7d32"
 
 st.set_page_config(page_title="Leixões SC — Avaliação de Plantel", layout="wide")
 
-# --- Sidebar: Branding + Período + Perfil ---
-import base64
 
 # 🔧 CSS para sidebar mais estreita e centralizada
 st.markdown(
