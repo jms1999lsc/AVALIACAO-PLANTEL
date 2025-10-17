@@ -683,7 +683,13 @@ with col1:
     st.markdown("### Formulário de Avaliação")
 
     def nota(label: str, key: str):
-        return st.radio(label, [1,2,3,4], horizontal=True, index=None, key=key)
+    """
+    Compatível com todas as versões: mostra um '—' inicial (sem valor) e
+    só passa a 1..4 depois do clique do utilizador.
+    """
+    opcoes = ["—", 1, 2, 3, 4]
+    escolha = st.radio(label, opcoes, horizontal=True, index=0, key=key)
+    return None if escolha == "—" else escolha
 
     encaixe   = nota("Encaixe no Perfil Leixões",       f"n_encaixe_{selecionado_id}_{ano}_{mes}_{perfil}")
     fisicas   = nota("Capacidades Físicas Exigidas",    f"n_fisicas_{selecionado_id}_{ano}_{mes}_{perfil}")
