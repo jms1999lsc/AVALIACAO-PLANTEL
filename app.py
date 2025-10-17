@@ -670,65 +670,69 @@ selecionado = players[players["id"]==selecionado_id].iloc[0]
 col1, col2 = st.columns([1.2, 2.2], gap="large")
 
 with col1:
-    st.markdown("#### Jogador Selecionado")
-
-    # Cabeçalho e foto, centrados dentro da coluna esquerda
-    left_sp, center, right_sp = st.columns([1, 2, 1])
+    st.markdown("#### Jogador selecionado")
+    lsp, center, rsp = st.columns([1,2,1])
     with center:
         st.markdown(
-            f"""
-            <div style="text-align:center; font-weight:700; margin:8px 0 10px 0;">
-                <span class="badge">#{int(selecionado['numero'])}</span> {selecionado['nome']}
-            </div>
-            """,
+            f"<div class='player-hero-title'><span class='badge'>#{int(selecionado['numero'])}</span> {selecionado['nome']}</div>",
             unsafe_allow_html=True
         )
-        st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)  # foto por baixo, centrada
+        st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)
 
-    st.write("")  # espaço pequeno
+    # Formulário
+    st.markdown("### Formulário de Avaliação")
 
+    def nota(label: str, key: str):
+        return st.radio(label, [1,2,3,4], horizontal=True, index=None, key=key)
 
-st.markdown("---")
+    encaixe   = nota("Encaixe no Perfil Leixões",       f"n_encaixe_{selecionado_id}_{ano}_{mes}_{perfil}")
+    fisicas   = nota("Capacidades Físicas Exigidas",    f"n_fisicas_{selecionado_id}_{ano}_{mes}_{perfil}")
+    mentais   = nota("Capacidades Mentais Exigidas",    f"n_mentais_{selecionado_id}_{ano}_{mes}_{perfil}")
+    imp_of    = nota("Impacto Ofensivo na Equipa",      f"n_impof_{selecionado_id}_{ano}_{mes}_{perfil}")
+    imp_def   = nota("Impacto Defensivo na Equipa",     f"n_impdef_{selecionado_id}_{ano}_{mes}_{perfil}")
+    potencial = nota("Potencial Futuro",                 f"n_pot_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-if perfil != "Administrador":
-        st.subheader("Formulário de Avaliação")
+    mult_opts = funcs["nome"].tolist()
+    fun_sel = st.multiselect("Funções (obrigatório)", options=mult_opts, help="Pode escolher várias.")
+    obs = st.text_area("Observações (visível apenas ao Administrador)")
 
-# controlos 1-4 (com fallback)
-def nota(label: str, key: str):
-    # Radio sem seleção inicial; devolve None até o utilizador escolher
-        return st.radio(label, [1, 2, 3, 4], horizontal=True, index=None, key=key)
+    notas = [encaixe,fisicas,mentais,imp_of,imp_def,potencial]
+    faltam_notas = any(v is None for v in notas)
+    faltam_funcoes = len(fun_sel)==0
+    can_submit = (not faltam_notas) and (not faltam_funcoes)
 
+    if st.button("Submeter avaliação", type="primary", disabled=not can_submit):
+        row = dict(
+            timestamp=datetime.utcnow().isoformat(),
+            ano=ano, mes=mes, avaliador=perfil,
+            player_id=int(selecionado["id"]), player_numero=int(selecionado["numero"]), player_nome=selecionado["nome"],
+            encaixe=int(encaixe), fisicas=int(fisicas), mentais=int(mentais),
+            impacto_of=int(imp_of), impacto_def=int(imp_def), potencial=int(potencial),
+            funcoes=";".join(fun_sel), observacoes=obs.replace("\n"," ").strip()
+        )
+        save_avaliacao(row)
+        st.session_state["session_completed"].add((perfil,ano,mes,int(selecionado["id"])))
+        st.success("✅ Avaliação registada.")
+        st.rerun()
 
-        encaixe   = nota("Encaixe no Perfil Leixões",       key=f"n_encaixe_{selecionado_id}_{ano}_{mes}_{perfil}")
-        fisicas   = nota("Capacidades Físicas Exigidas",    key=f"n_fisicas_{selecionado_id}_{ano}_{mes}_{perfil}")
-        mentais   = nota("Capacidades Mentais Exigidas",    key=f"n_mentais_{selecionado_id}_{ano}_{mes}_{perfil}")
-        imp_of    = nota("Impacto Ofensivo na Equipa",      key=f"n_impof_{selecionado_id}_{ano}_{mes}_{perfil}")
-        imp_def   = nota("Impacto Defensivo na Equipa",     key=f"n_impdef_{selecionado_id}_{ano}_{mes}_{perfil}")
-        potencial = nota("Potencial Futuro",                key=f"n_pot_{selecionado_id}_{ano}_{mes}_{perfil}")
+    if faltam_notas:
+        st.info("⚠️ Selecione uma opção (1–4) em todas as dimensões.")
+    elif faltam_funcoes:
+        st.info("⚠️ Selecione pelo menos uma função.")
 
-        mult_opts = funcs["nome"].tolist()
-        fun_sel = st.multiselect("Funções (obrigatório)", options=mult_opts, help="Pode escolher várias.")
-        obs = st.text_area("Observações (visível apenas ao Administrador)")
-
-        can_submit
-        # Submissão global do mês
-        df_all = read_avaliacoes()  # recarrega após submit (cache limpa na escrita)
-        completos_ids = [int(pid) for pid in players["id"].tolist() if completed_for_player(int(pid))]
-        falta = len(players) - len(completos_ids)
-        st.markdown("---")
-        st.write(f"**Estado do mês:** {len(completos_ids)}/{len(players)} jogadores avaliados.")
-
-        ja_fechado = False
-        if not df_fechos.empty:
-            m = (df_fechos.get("avaliador","")==perfil) & (df_fechos.get("ano",0)==ano) & (df_fechos.get("mes",0)==mes)
-            ja_fechado = not df_fechos[m].empty
-
-        btn_disabled = (falta > 0) or ja_fechado
-        if st.button("✅ Submeter mês (tudo preenchido)", type="secondary", disabled=btn_disabled,
-                     help="Fica ativo quando os 25 estiverem avaliados. Regista o fecho deste período."):
-            fechar_mes(perfil, ano, mes, len(completos_ids), len(players))
-            st.success("📌 Mês marcado como submetido para este avaliador.")
-            st.rerun()
+    # Estado do mês + Submeter mês
+    df_all = read_avaliacoes()
+    completos = [int(pid) for pid in players["id"].tolist() if is_completed(df_all, perfil, ano, mes, int(pid)) or (perfil,ano,mes,int(pid)) in st.session_state["session_completed"]]
+    falta = len(players) - len(completos)
+    st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
+    ja_fechado = False
+    if not df_fechos.empty:
+        mask = (df_fechos.get("avaliador","")==perfil) & (df_fechos.get("ano",0)==ano) & (df_fechos.get("mes",0)==mes)
+        ja_fechado = not df_fechos[mask].empty
+    if st.button("✅ Submeter mês (tudo preenchido)", type="secondary", disabled=(falta>0) or ja_fechado):
+        fechar_mes(perfil, ano, mes, len(completos), len(players))
+        st.success("📌 Mês marcado como submetido para este avaliador.")
+        st.rerun()
 
 # ======== COLUNA DIREITA — INSTRUÇÕES + BLOCO DO ADMIN ========
 with col2:
