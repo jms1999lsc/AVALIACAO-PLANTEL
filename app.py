@@ -794,4 +794,4 @@ with col2:
     # -----------------------------------------------------------------
     # Rodapé discreto
     st.markdown("---")
-    st.caption("© Leixões SC — Avaliação de Plantel")
+    st.caption("© Leixões SC")
