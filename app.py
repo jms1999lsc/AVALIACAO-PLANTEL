@@ -592,7 +592,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown('<div class="sidebar-title" style="color:#333;font-weight:700;">Utilizador</div>', unsafe_allow_html=True)
 perfil = st.sidebar.selectbox(
     "Perfil",
-    ["João Nuno Fonseca","Cristiano Brito","Rúben Pinheiro","João Amorim","Pedro Campos Ribeiro","Rodrigo Weber","João Silva","Administrador"]
+    ["Utilizador 1","Utilizador 2","Utilizador 3","Utilizador 4","Utilizador 5","Utilizador 6","Utilizador 7","Administrador"]
 )
 
 if perfil == "Administrador":
