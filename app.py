@@ -504,6 +504,7 @@ with col2:
     st.markdown("#### Instruções")
     st.markdown("""
     <ol style="line-height:1.7; font-size:.95rem;">
+      <li>Escolha o seu <strong>nome</strong> como Perfil em <strong>Utilizador</strong>.</li>  
       <li>Escolha o <strong>jogador</strong> na barra lateral.</li>
       <li>Preencha todos os <strong>parâmetros obrigatórios</strong> (1–4).</li>
       <li>Clique <strong>Submeter avaliação</strong> — a gravação é 1 linha por métrica.</li>
