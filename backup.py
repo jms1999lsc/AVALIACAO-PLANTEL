@@ -526,16 +526,48 @@ funcs   = load_functions()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"] = set()
 
-# --- Sidebar: Branding ---
+# --- Sidebar: branding ajustado, sem espaço morto no topo ---
 logo_path = "assets/logo.png"
 with st.sidebar:
-    st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=120, clamp=True)   # <-- altera aqui o tamanho se quiseres
-    else:
-        st.image("https://placehold.co/120x120?text=Logo", width=120)
-    st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    # Remove padding superior com CSS customizado
+    st.markdown(
+        """
+        <style>
+            section[data-testid="stSidebar"] div[role="document"] {
+                padding-top: 0rem !important;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Cria colunas para centralizar o logo
+    cL, cC, cR = st.columns([1, 2, 1])
+    with cC:
+        if os.path.exists(logo_path):
+            st.image(
+                logo_path,
+                width=130,           # ajusta aqui se quiser maior/menor
+                use_column_width=False,
+                clamp=True
+            )
+        else:
+            st.image("https://placehold.co/130x130?text=Logo", width=130)
+
+    # Título centrado logo abaixo do símbolo
+    st.markdown(
+        f"""
+        <div style='text-align:center;
+                    color:{PRIMARY};
+                    font-weight:800;
+                    font-size:15px;
+                    margin-top:-6px;
+                    margin-bottom:16px;'>
+            Leixões SC — Avaliação de Plantel
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
     today = datetime.today()
@@ -560,7 +592,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown('<div class="sidebar-title" style="color:#333;font-weight:700;">Utilizador</div>', unsafe_allow_html=True)
 perfil = st.sidebar.selectbox(
     "Perfil",
-    ["Avaliador 1","Avaliador 2","Avaliador 3","Avaliador 4","Avaliador 5","Avaliador 6","Avaliador 7","Administrador"]
+    ["Utilizador 1","Utilizador 2","Utilizador 3","Utilizador 4","Utilizador 5","Utilizador 6","Utilizador 7","Administrador"]
 )
 
 if perfil == "Administrador":
@@ -639,206 +671,127 @@ col1, col2 = st.columns([1.2, 2.2], gap="large")
 
 with col1:
     st.markdown("#### Jogador selecionado")
-
-    # Cabeçalho e foto, centrados dentro da coluna esquerda
-    left_sp, center, right_sp = st.columns([1, 2, 1])
+    lsp, center, rsp = st.columns([1,2,1])
     with center:
         st.markdown(
-            f"""
-            <div style="text-align:center; font-weight:700; margin:8px 0 10px 0;">
-                <span class="badge">#{int(selecionado['numero'])}</span> {selecionado['nome']}
-            </div>
-            """,
+            f"<div class='player-hero-title'><span class='badge'>#{int(selecionado['numero'])}</span> {selecionado['nome']}</div>",
             unsafe_allow_html=True
         )
-        st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)  # foto por baixo, centrada
+        st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)
 
-    st.markdown("---")  # separador antes do formulário
-    # ... (segue o formulário como já tens)
+    # Formulário
+    st.markdown("### Formulário de Avaliação")
 
-
-st.markdown("---")
-
-if perfil != "Administrador":
-        st.subheader("Formulário de Avaliação")
-
-        # controlos 1-4 (com fallback)
-        def seg(label, default=3):
-            try:
-                return st.segmented_control(label, options=[1,2,3,4], default=default)
-            except Exception:
-                return st.radio(label, [1,2,3,4], horizontal=True, index=default-1)
-
-        encaixe   = seg("Encaixe no Perfil Leixões")
-        fisicas   = seg("Capacidades Físicas Exigidas")
-        mentais   = seg("Capacidades Mentais Exigidas")
-        imp_of    = seg("Impacto Ofensivo na Equipa")
-        imp_def   = seg("Impacto Defensivo na Equipa")
-        potencial = seg("Potencial Futuro")
-
-        mult_opts = funcs["nome"].tolist()
-        fun_sel = st.multiselect("Funções (obrigatório)", options=mult_opts, help="Pode escolher várias.")
-        obs = st.text_area("Observações (visível apenas ao Administrador)")
-
-        can_submit = len(fun_sel) > 0
-        if st.button("Submeter avaliação", type="primary", disabled=not can_submit):
-            row = dict(
-                timestamp=datetime.utcnow().isoformat(),
-                ano=ano, mes=mes, avaliador=perfil,
-                player_id=int(selecionado["id"]),
-                player_numero=int(selecionado["numero"]),
-                player_nome=selecionado["nome"],
-                encaixe=int(encaixe), fisicas=int(fisicas), mentais=int(mentais),
-                impacto_of=int(imp_of), impacto_def=int(imp_def), potencial=int(potencial),
-                funcoes=";".join(fun_sel), observacoes=obs.replace("\n"," ").strip()
-            )
-            save_avaliacao(row)
-
-            # marca completo imediatamente nesta sessão
-            st.session_state["session_completed"].add((perfil, ano, mes, int(selecionado["id"])))
-
-            st.success("✅ Avaliação registada.")
-            st.rerun()
-
-        # Submissão global do mês
-        df_all = read_avaliacoes()  # recarrega após submit (cache limpa na escrita)
-        completos_ids = [int(pid) for pid in players["id"].tolist() if completed_for_player(int(pid))]
-        falta = len(players) - len(completos_ids)
-        st.markdown("---")
-        st.write(f"**Estado do mês:** {len(completos_ids)}/{len(players)} jogadores avaliados.")
-
-        ja_fechado = False
-        if not df_fechos.empty:
-            m = (df_fechos.get("avaliador","")==perfil) & (df_fechos.get("ano",0)==ano) & (df_fechos.get("mes",0)==mes)
-            ja_fechado = not df_fechos[m].empty
-
-        btn_disabled = (falta > 0) or ja_fechado
-        if st.button("✅ Submeter mês (tudo preenchido)", type="secondary", disabled=btn_disabled,
-                     help="Fica ativo quando os 25 estiverem avaliados. Regista o fecho deste período."):
-            fechar_mes(perfil, ano, mes, len(completos_ids), len(players))
-            st.success("📌 Mês marcado como submetido para este avaliador.")
-            st.rerun()
-
-with col2:
-    if perfil == "Administrador":
-        st.subheader("Dashboard do Administrador")
-
-        df = read_avaliacoes()
-        left, right = st.columns(2)
-        anos_disp = sorted(df["ano"].dropna().unique().tolist() or [int(datetime.today().year)])
-        with left:
-            filt_ano = st.selectbox("Ano", anos_disp, index=len(anos_disp)-1)
-        with right:
-            meses_disp = sorted([int(x) for x in df[df["ano"]==filt_ano]["mes"].dropna().unique().tolist()] or [int(datetime.today().month)])
-            filt_mes = st.selectbox("Mês", meses_disp, index=len(meses_disp)-1,
-                                    format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize())
-
-        df_m = df[(df["ano"]==filt_ano) & (df["mes"]==filt_mes)]
-        st.markdown(f"**Período:** {datetime(2000,filt_mes,1).strftime('%B').capitalize()} {filt_ano}")
-
-        if df_m.empty:
-            st.info("Sem submissões para este período.")
-        else:
-            dims = ["encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]
-            rows = []
-            for pid, g in df_m.groupby("player_id"):
-                rec = {
-                    "player_id": int(pid),
-                    "player_numero": int(g.iloc[0]["player_numero"]),
-                    "player_nome": g.iloc[0]["player_nome"],
-                }
-                medias = []
-                for d in dims:
-                    val = trimmed_mean(g[d].astype(float).tolist())
-                    rec[f"media_{d}"] = val
-                    if val is not None:
-                        medias.append(val)
-                rec["media_global"] = float(np.mean(medias)) if medias else None
-                rec["n_usadas"] = max(0, len(g)-2) if len(g)>=3 else len(g)
-                rows.append(rec)
-            agg = pd.DataFrame(rows).sort_values(["media_global","player_numero"], ascending=[False, True])
-
-            st.markdown("#### Tabela de médias aparadas (por jogador)")
-            st.dataframe(agg, use_container_width=True)
-
-            csv_bytes = agg.to_csv(index=False).encode()
-            st.download_button("📤 Exportar CSV do período", data=csv_bytes,
-                               file_name=f"agregados_{filt_ano}_{filt_mes}.csv", mime="text/csv")
-
-            st.markdown("---")
-            st.markdown("#### Média global por jogador (barras)")
-            chart = alt.Chart(agg).mark_bar(color=PRIMARY).encode(
-                x=alt.X("player_nome:N", sort="-y", title="Jogador"),
-                y=alt.Y("media_global:Q", title="Média Global (1–4)"),
-                tooltip=["player_nome","media_global"]
-            ).properties(height=320)
-            st.altair_chart(chart, use_container_width=True)
-
-            st.markdown("---")
-            st.markdown("#### Radar: comparação por jogador ao longo dos meses")
-            pj = st.selectbox("Jogador", agg["player_nome"].tolist())
-            meses_unicos = sorted(df[df["ano"]==filt_ano]["mes"].unique().tolist())
-            meses_sel = st.multiselect("Meses a comparar", meses_unicos, default=[filt_mes])
-            if meses_sel:
-                categories = ["Encaixe","Cap. Físicas","Cap. Mentais","Imp. Ofensivo","Imp. Defensivo","Potencial"]
-                theta = categories + categories[:1]
-                fig = go.Figure()
-                for msel in meses_sel:
-                    dfn = df[(df["ano"]==filt_ano) & (df["mes"]==msel) & (df["player_nome"]==pj)]
-                    if dfn.empty:
-                        continue
-                    vals = []
-                    for d in dims:
-                        vals.append(trimmed_mean(dfn[d].astype(float).tolist()) or 0)
-                    vals.append(vals[0])
-                    fig.add_trace(
-                        go.Scatterpolar(
-                            r=vals, theta=theta, fill="none",
-                            name=f"{datetime(2000,msel,1).strftime('%B').capitalize()}-{str(filt_ano)[-2:]}",
-                            line=dict(color=PRIMARY)
-                        )
-                    )
-                fig.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=[0,4], tickvals=[1,2,3,4])),
-                    showlegend=True, height=450
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-            st.markdown("---")
-            st.markdown("#### Evolução mensal da média global (linha)")
-            pj2 = st.selectbox("Jogador (evolução)", agg["player_nome"].tolist(), key="evol")
-            evol_rows = []
-            for msel in sorted(df[df["ano"]==filt_ano]["mes"].unique().tolist()):
-                dfn = df[(df["ano"]==filt_ano) & (df["mes"]==msel) & (df["player_nome"]==pj2)]
-                if dfn.empty:
-                    continue
-                medias = []
-                for d in dims:
-                    val = trimmed_mean(dfn[d].astype(float).tolist())
-                    if val is not None:
-                        medias.append(val)
-                if medias:
-                    evol_rows.append({"mes": int(msel), "media_global": float(np.mean(medias))})
-            if evol_rows:
-                e = pd.DataFrame(evol_rows).sort_values("mes")
-                e["Mes"] = e["mes"].apply(lambda m: datetime(2000,m,1).strftime("%b").capitalize())
-                line = alt.Chart(e).mark_line(point=True, color=PRIMARY).encode(
-                    x=alt.X("Mes:N", sort=None),
-                    y=alt.Y("media_global:Q", title="Média Global"),
-                    tooltip=["Mes","media_global"]
-                ).properties(height=260)
-                st.altair_chart(line, use_container_width=True)
-            else:
-                st.info("Sem dados suficientes para evolução.")
-    else:
-        st.subheader("Instruções")
-        st.write(
-            """
-        1. Escolha o **jogador** na barra lateral.
-        2. Preencha as **seis dimensões** (1–4) e selecione as **funções** (pode escolher várias).
-        3. Clique **Submeter avaliação** para registar o mês selecionado.
-
-        *As submissões ficam visíveis apenas ao **Administrador**.
-        O botão **Submeter mês** só ativa quando os **25/25** estiverem preenchidos.*
+    def nota(label: str, key: str):
         """
+        Compatível com todas as versões: mostra um '—' inicial (sem valor) e
+        só passa a 1..4 depois do clique do utilizador.
+        """
+        opcoes = ["—", 1, 2, 3, 4]
+        escolha = st.radio(label, opcoes, horizontal=True, index=0, key=key)
+        return None if escolha == "—" else escolha
+
+    encaixe   = nota("Encaixe no Perfil Leixões",       f"n_encaixe_{selecionado_id}_{ano}_{mes}_{perfil}")
+    fisicas   = nota("Capacidades Físicas Exigidas",    f"n_fisicas_{selecionado_id}_{ano}_{mes}_{perfil}")
+    mentais   = nota("Capacidades Mentais Exigidas",    f"n_mentais_{selecionado_id}_{ano}_{mes}_{perfil}")
+    imp_of    = nota("Impacto Ofensivo na Equipa",      f"n_impof_{selecionado_id}_{ano}_{mes}_{perfil}")
+    imp_def   = nota("Impacto Defensivo na Equipa",     f"n_impdef_{selecionado_id}_{ano}_{mes}_{perfil}")
+    potencial = nota("Potencial Futuro",                 f"n_pot_{selecionado_id}_{ano}_{mes}_{perfil}")
+
+    mult_opts = funcs["nome"].tolist()
+    fun_sel = st.multiselect("Funções (obrigatório)", options=mult_opts, help="Pode escolher várias.")
+    obs = st.text_area("Observações (visível apenas ao Administrador)")
+
+    notas = [encaixe,fisicas,mentais,imp_of,imp_def,potencial]
+    faltam_notas = any(v is None for v in notas)
+    faltam_funcoes = len(fun_sel)==0
+    can_submit = (not faltam_notas) and (not faltam_funcoes)
+
+    if st.button("Submeter avaliação", type="primary", disabled=not can_submit):
+        row = dict(
+            timestamp=datetime.utcnow().isoformat(),
+            ano=ano, mes=mes, avaliador=perfil,
+            player_id=int(selecionado["id"]), player_numero=int(selecionado["numero"]), player_nome=selecionado["nome"],
+            encaixe=int(encaixe), fisicas=int(fisicas), mentais=int(mentais),
+            impacto_of=int(imp_of), impacto_def=int(imp_def), potencial=int(potencial),
+            funcoes=";".join(fun_sel), observacoes=obs.replace("\n"," ").strip()
         )
+        save_avaliacao(row)
+        st.session_state["session_completed"].add((perfil,ano,mes,int(selecionado["id"])))
+        st.success("✅ Avaliação registada.")
+        st.rerun()
+
+    if faltam_notas:
+        st.info("⚠️ Selecione uma opção (1–4) em todas as dimensões.")
+    elif faltam_funcoes:
+        st.info("⚠️ Selecione pelo menos uma função.")
+
+    # Estado do mês + Submeter mês
+    df_all = read_avaliacoes()
+    completos = [int(pid) for pid in players["id"].tolist() if is_completed(df_all, perfil, ano, mes, int(pid)) or (perfil,ano,mes,int(pid)) in st.session_state["session_completed"]]
+    falta = len(players) - len(completos)
+    st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
+    ja_fechado = False
+    if not df_fechos.empty:
+        mask = (df_fechos.get("avaliador","")==perfil) & (df_fechos.get("ano",0)==ano) & (df_fechos.get("mes",0)==mes)
+        ja_fechado = not df_fechos[mask].empty
+    if st.button("✅ Submeter mês (tudo preenchido)", type="secondary", disabled=(falta>0) or ja_fechado):
+        fechar_mes(perfil, ano, mes, len(completos), len(players))
+        st.success("📌 Mês marcado como submetido para este avaliador.")
+        st.rerun()
+
+# ======== COLUNA DIREITA — INSTRUÇÕES + BLOCO DO ADMIN ========
+with col2:
+    st.markdown("#### Instruções")
+
+    # Bloco de instruções principais (igual para todos)
+    st.markdown(
+        """
+        <ol style="line-height: 1.7; font-size: 0.95rem;">
+            <li>Escolha o seu <strong>nome</strong> como Perfil em <strong>Utilizador</strong>.</li>
+            <li>Escolha o <strong>jogador</strong> na barra lateral.</li>
+            <li>Preencha as <strong>seis dimensões</strong> (1–4) e selecione as <strong>funções</strong> (pode escolher várias).</li>
+            <li>Clique <strong>Submeter avaliação</strong> para registar o mês selecionado.</li>
+        </ol>
+        <p style="font-style: italic; font-size: 0.9rem;">
+            As submissões ficam visíveis apenas ao <strong>Administrador</strong>.<br>
+            O botão <strong>Submeter mês</strong> só fica ativo quando os <strong>25/25</strong> jogadores estiverem preenchidos.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # -----------------------------------------------------------------
+    # BLOCO ADICIONAL VISÍVEL APENAS PARA O ADMINISTRADOR
+    # -----------------------------------------------------------------
+    if perfil == "Administrador":
+        st.markdown("---")
+        st.markdown("#### Painel do Administrador")
+
+        # Dados agregados das avaliações
+        total_avaliacoes = len(df_all) if 'df_all' in locals() else 0
+        total_fechos = len(df_fechos) if 'df_fechos' in locals() else 0
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.metric("Avaliações registadas", total_avaliacoes)
+        with col_b:
+            st.metric("Fechos mensais", total_fechos)
+
+        # Botão opcional de atualização
+        if st.button("🔄 Atualizar dados", type="secondary"):
+            st.cache_data.clear()
+            st.rerun()
+
+        # (opcional) — exportar dados
+        st.download_button(
+            "⬇️ Exportar avaliações (CSV)",
+            df_all.to_csv(index=False).encode("utf-8") if 'df_all' in locals() else b"",
+            "avaliacoes.csv",
+            "text/csv",
+        )
+
+    # -----------------------------------------------------------------
+    # Rodapé discreto
+    st.markdown("---")
+    st.caption("© Leixões SC")
