@@ -466,7 +466,7 @@ with col1:
 
     # Transversais Físicos
     if not secs["fisicos"].empty:
-        st.markdown("##### Parâmetros Físicos (Transversais)")
+        st.markdown("##### Parâmetros Físicos")
         for _, m in secs["fisicos"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
             val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
@@ -474,7 +474,7 @@ with col1:
 
     # Transversais Mentais
     if not secs["mentais"].empty:
-        st.markdown("##### Parâmetros Mentais (Transversais)")
+        st.markdown("##### Parâmetros Mentais")
         for _, m in secs["mentais"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
             val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
@@ -491,7 +491,7 @@ with col1:
     # Tagging de Funções (Opção B)
     funcoes_text = st.text_input("Funções (tagging opcional — separa por ';')", value="")
 
-    obs = st.text_area("Observações (visível apenas ao Administrador)")
+    obs = st.text_area("Observações")
 
     # Validação: todas obrigatórias respondidas
     obrig = pd.concat([
