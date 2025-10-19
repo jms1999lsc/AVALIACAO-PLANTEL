@@ -1,187 +1,90 @@
-# app.py — Leixões SC — Avaliação de Plantel
-# Streamlit + Google Sheets (cache, batch-read, write-first) + UI afinada e alinhada
-
+# app.py — Leixões SC — Avaliação de Plantel (v2: métricas dinâmicas por categoria)
 import os
 from datetime import datetime
+import unicodedata
 
-import altair as alt
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
-from gspread.exceptions import WorksheetNotFound, SpreadsheetNotFound, APIError
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
 
 # =========================
-# Configuração visual/tema
+# Config
 # =========================
-PRIMARY = "#d22222"   # vermelho Leixões
+PRIMARY = "#d22222"
 BLACK   = "#111111"
 GREEN   = "#2e7d32"
+USE_SHEETS = True
 
-st.set_page_config(page_title="Leixões SC — Avaliação de Plantel", layout="wide")
-
-# ---- CSS Global (sidebar estreita, botões vermelhos, progresso estilizado) ----
-st.markdown(
-    f"""
-    <style>
-    /* Sidebar mais estreita e com fundo leve */
-    [data-testid="stSidebar"] {{
-        min-width: 315px !important;
-        max-width: 315px !important;
-        background-color: #f3f3f3;
-        padding-top: 1.0rem;
-        padding-left: 0.6rem;
-        padding-right: 0.6rem;
-    }}
-    /* Centraliza imagens (logo) na sidebar */
-    [data-testid="stSidebar"] img {{
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
-    }}
-    /* Título da sidebar (vermelho Leixões) */
-    .sidebar-title {{
-        text-align: center;
-        color: {PRIMARY};
-        font-weight: 800;
-        font-size: 15px;
-        margin-top: 0.4rem;
-        margin-bottom: 1.0rem;
-    }}
-    /* Rótulos menores e consistentes na sidebar */
-    [data-testid="stSidebar"] label {{
-        font-size: 0.88rem !important;
-        font-weight: 600 !important;
-        color: #333 !important;
-    }}
-    /* Buttons (toda a app) — vermelho Leixões + padding consistente */
-    .stButton > button {{
-        background-color: {PRIMARY} !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 0.5rem 0.9rem !important;
-        font-weight: 700 !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,.05);
-    }}
-    .stButton > button:disabled {{
-        opacity: .45 !important;
-    }}
-    .stButton > button:hover:enabled {{
-        filter: brightness(0.95);
-    }}
-
-    /* Progress bar – realça com vermelho Leixões */
-    [data-testid="stProgressBar"] > div > div {{
-        background-color: {PRIMARY} !important;
-    }}
-    [data-testid="stProgressBar"] {{
-        height: 12px !important;
-        border-radius: 99px !important;
-        background-color: #e9e9e9 !important;
-    }}
-
-    /* Badges e cartões */
-    .badge {{
-        display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius:999px; font-size:.75rem;
-    }}
-    .player-card {{ padding:6px 6px; border-radius:10px; border:1px solid #eee; margin-bottom:6px; }}
-    .player-card:hover {{ background:#fafafa; }}
-
-    /* Títulos globais */
-    h1, h2, h3, h4 {{ color: {BLACK}; }}
-    </style>
-    """,
-    unsafe_allow_html=True,
+st.set_page_config(
+    page_title="Leixões SC — Avaliação de Plantel",
+    page_icon="assets/logo_mini.png" if os.path.exists("assets/logo_mini.png") else None,
+    layout="wide",
 )
 
-# === Sidebar: logo centrado e maior ===
+# =========================
+# CSS
+# =========================
 st.markdown(f"""
 <style>
-/* garante centragem de qualquer imagem na sidebar */
-[data-testid="stSidebar"] img {{
-  display:block; margin:0 auto;
+/* Sidebar compacta + remover espaço topo */
+[data-testid="stSidebar"] {{
+  min-width: 220px !important;
+  max-width: 220px !important;
+  background:#f3f3f3;
+  padding-left:.6rem; padding-right:.6rem;
 }}
-/* bloco do logo + título com alinhamento central */
-.sidebar-brand {{
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  text-align:center; margin-bottom:12px;
-}}
-.sidebar-brand .brand-title {{
-  color:{PRIMARY}; font-weight:800; font-size:16px; margin-top:6px;
-}}
-</style>
-""", unsafe_allow_html=True)
+section[data-testid="stSidebar"] div[role="document"] {{ padding-top: 0 !important; }}
 
-# === Sidebar: lista de jogadores — alinhamento perfeito a 60px ===
-st.markdown("""
-<style>
-/* cada item tem 60px de altura */
-.player-item { margin-bottom:10px; }
-.player-row-fixed { height:60px; }
+/* Branding centrado */
+[data-testid="stSidebar"] img {{ display:block; margin:0 auto; }}
+.sidebar-brand {{ display:flex; flex-direction:column; align-items:center; text-align:center; }}
+.sidebar-brand .brand-title {{ color:{PRIMARY}; font-weight:800; font-size:16px; margin-top:6px; }}
 
-/* cada coluna do item centra verticalmente o conteúdo */
-.player-row-fixed [data-testid="column"]{
-  display:flex; align-items:center; gap:8px;
-}
-
-/* imagem 60×60 sem margens do Streamlit */
-.player-row-fixed .img-wrap{
-  width:60px; height:60px; display:flex; align-items:center; justify-content:center;
-}
-.player-row-fixed .img-wrap [data-testid="stImage"]{ margin:0 !important; padding:0 !important; }
-.player-row-fixed .img-wrap img{
-  width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; display:block;
-}
-
-/* botão com a MESMA altura da imagem, texto centrado verticalmente */
-.player-row-fixed .btn-wrap .stButton{ width:100%; margin:0 !important; }
-.player-row-fixed .btn-wrap .stButton > button{
-  width:100% !important;
-  height:60px !important;
-  display:flex; align-items:center; justify-content:flex-start;
+/* Lista jogadores (60px alinhado) */
+.player-item {{ margin-bottom:10px; }}
+.player-row-fixed {{ height:60px; }}
+.player-row-fixed [data-testid="column"]{{ display:flex; align-items:center; gap:8px; }}
+.player-row-fixed .img-wrap{{ width:60px; height:60px; display:flex; align-items:center; justify-content:center; }}
+.player-row-fixed .img-wrap [data-testid="stImage"]{{ margin:0 !important; padding:0 !important; }}
+.player-row-fixed .img-wrap img{{ width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; display:block; }}
+.player-row-fixed .btn-wrap .stButton{{ width:100%; margin:0 !important; }}
+.player-row-fixed .btn-wrap .stButton > button{{
+  width:100% !important; height:60px !important; display:flex; align-items:center; justify-content:flex-start;
   white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
-  padding:0 0.60rem !important; font-size:0.96rem !important;
-  margin:0 !important;
-}
+  padding:0 .60rem !important; font-size:.96rem !important; margin:0 !important;
+}}
+.status-dot{{ width:12px; height:12px; border-radius:50%; display:inline-block; }}
+.status-done{{ background:{GREEN}; }}
+.status-pending{{ background:#cfcfcf; border:1px solid #bdbdbd; }}
 
-/* bolinha de estado */
-.status-dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
-.status-done{ background:#2e7d32; }
-.status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
+/* Títulos / cores */
+h1,h2,h3,h4 {{ color:{BLACK}; }}
+.stButton > button {{
+  background-color:{PRIMARY} !important; color:#fff !important; border:none !important;
+  border-radius:8px !important; padding:.55rem .9rem !important; font-weight:700 !important;
+}}
+.stButton > button:disabled {{ opacity:.45 !important; }}
+[data-testid="stProgressBar"] > div > div {{ background:{PRIMARY} !important; }}
 
-/* bloco do jogador selecionado (título + foto) centrado */
-.player-hero{ display:flex; flex-direction:column; align-items:center; }
-.player-hero-title{ text-align:center; font-weight:700; margin:8px 0 10px 0; }
+/* Hero do jogador */
+.player-hero-title {{ text-align:center; font-weight:700; margin:8px 0 10px 0; }}
 </style>
 """, unsafe_allow_html=True)
-
 
 # =========================
-# Caminhos e ficheiros
+# Paths fallback CSV
 # =========================
 DATA_DIR       = "data"
 PLAYERS_CSV    = os.path.join(DATA_DIR, "jogadores.csv")
-FUNCOES_CSV    = os.path.join(DATA_DIR, "funcoes.csv")
 AVALIACOES_CSV = os.path.join(DATA_DIR, "avaliacoes.csv")
-FECHOS_CSV     = os.path.join(DATA_DIR, "fechos.csv")
+FUNCOES_CSV    = os.path.join(DATA_DIR, "funcoes.csv")
+os.makedirs(DATA_DIR, exist_ok=True)
 
-# ============================================================
-# 🔗 GOOGLE SHEETS (com fallback local) + anti-429
-# ============================================================
-USE_SHEETS = True  # Google Sheets ativo
-
-REQUIRED_TABS = {
-    "avaliacoes": [
-        "timestamp","ano","mes","avaliador","player_id","player_numero","player_nome",
-        "encaixe","fisicas","mentais","impacto_of","impacto_def","potencial",
-        "funcoes","observacoes",
-    ],
-    "fechos": ["timestamp","ano","mes","avaliador","completos","total","status"],
-}
-
+# =========================
+# Google Sheets helpers
+# =========================
 def _get_sheet_id():
-    """Obtém SHEET_ID dos secrets; aceita ID puro ou URL completa."""
     sid = None
     try:
         sid = st.secrets["gcp_service_account"].get("SHEET_ID", None)
@@ -190,13 +93,10 @@ def _get_sheet_id():
     if not sid:
         sid = st.secrets.get("SHEET_ID", None)
     if not sid:
-        raise ValueError("SHEET_ID não encontrado nos secrets. Defina-o em [gcp_service_account] ou na raiz.")
+        raise ValueError("SHEET_ID não definido em secrets.")
     sid = str(sid).strip()
     if "docs.google.com/spreadsheets/d/" in sid:
-        try:
-            sid = sid.split("/d/")[1].split("/")[0]
-        except Exception:
-            raise ValueError("Não foi possível extrair o SHEET_ID da URL fornecida.")
+        sid = sid.split("/d/")[1].split("/")[0]
     return sid
 
 @st.cache_resource
@@ -214,584 +114,479 @@ def _get_gspread_client():
 def _open_sheet():
     gc = _get_gspread_client()
     sid = _get_sheet_id()
-    try:
-        return gc.open_by_key(sid)
-    except SpreadsheetNotFound as e:
-        raise RuntimeError(
-            "SpreadsheetNotFound (404). Verifique o SHEET_ID e se a folha foi partilhada com a service account (Editor)."
-        ) from e
-    except APIError as e:
-        raise RuntimeError(f"APIError ao abrir a Sheet (possível 404/quota). Detalhe: {e}") from e
+    return gc.open_by_key(sid)
 
 @st.cache_data(ttl=120, show_spinner=False)
-def gs_read_bulk():
-    """
-    Lê 'avaliacoes' e 'fechos' numa chamada via Spreadsheet.values_batch_get.
-    Tolerante a quotas (429) e a abas em falta; devolve DataFrames vazios nesses casos.
-    """
-    sh = _open_sheet()
-    try:
-        res = sh.values_batch_get(ranges=["avaliacoes!A1:Z", "fechos!A1:Z"])
-    except APIError as e:
-        es = str(e)
-        if "Quota exceeded" in es or "429" in es:
-            return pd.DataFrame(), pd.DataFrame()
-        raise
-
-    vrs = res.get("valueRanges", [])
-
-    def _to_df_safe(vr_dict):
-        values = vr_dict.get("values", []) if isinstance(vr_dict, dict) else []
-        if not values:
-            return pd.DataFrame()
-        raw_header = values[0]
-        header = [str(h).strip() for h in raw_header if h is not None]
-        if not header:
-            return pd.DataFrame()
-        rows = values[1:]
-        fixed_rows = []
-        ncols = len(header)
-        for r in rows:
-            r = list(r or [])
-            if len(r) < ncols:
-                r = r + [""] * (ncols - len(r))
-            if len(r) > ncols:
-                r = r[:ncols]
-            fixed_rows.append(r)
-        try:
-            df = pd.DataFrame(fixed_rows, columns=header)
-        except Exception:
-            df = pd.DataFrame(fixed_rows)
-            df.columns = [f"col_{i+1}" for i in range(df.shape[1])]
-        return df
-
-    df_av = _to_df_safe(vrs[0] if len(vrs) > 0 else {})
-    df_f  = _to_df_safe(vrs[1] if len(vrs) > 1 else {})
-
-    # coerção básica de tipos
-    if not df_av.empty:
-        for col in ["player_id","player_numero","ano","mes","encaixe","fisicas","mentais","impacto_of","impacto_def","potencial"]:
-            if col in df_av.columns:
-                df_av[col] = pd.to_numeric(df_av[col], errors="coerce")
-    if not df_f.empty:
-        for col in ["ano","mes","completos","total"]:
-            if col in df_f.columns:
-                df_f[col] = pd.to_numeric(df_f[col], errors="coerce")
-
-    return df_av, df_f
-
-def gs_append(sheet_name: str, row_dict: dict) -> bool:
-    """
-    Escreve diretamente sem chamadas de leitura:
-    - Evita .worksheet() (faz GET); tenta usar cache local ou cria a aba direto.
-    - Tenta até 3 vezes em caso de quota 429.
-    """
-    import time
-    sh = _open_sheet()
-
-    header = REQUIRED_TABS.get(sheet_name, list(row_dict.keys()))
-    row = [row_dict.get(col, "") for col in header]
-
-    # cache simples de worksheets por sessão
-    if "_ws_cache" not in st.session_state:
-        st.session_state["_ws_cache"] = {}
-    ws_cache = st.session_state["_ws_cache"]
-
-    ws = ws_cache.get(sheet_name, None)
-    if ws is None:
-        try:
-            for w in sh.worksheets():
-                if w.title == sheet_name:
-                    ws = w
-                    break
-        except Exception:
-            ws = None
-
-    if ws is None:
-        try:
-            ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(header), 10))
-            ws.update([header])
-            ws_cache[sheet_name] = ws
-        except Exception as e:
-            st.error(f"Não consegui criar a aba '{sheet_name}': {e}")
-            return False
-
-    for attempt in range(3):
-        try:
-            ws.append_row(row, value_input_option="USER_ENTERED")
-            return True
-        except APIError as e:
-            es = str(e)
-            if "Quota exceeded" in es or "429" in es:
-                time.sleep(2 * (attempt + 1))
-                continue
-            st.error(f"Erro API ao gravar na Sheet: {e}")
-            return False
-        except Exception as e:
-            st.error(f"Erro inesperado ao gravar na Sheet: {e}")
-            return False
-
-    st.error("Falhou após várias tentativas (quota 429).")
-    return False
-
-def gs_replace_all(sheet_name: str, df: pd.DataFrame):
-    """Substitui toda a aba por um DataFrame (usar com cuidado)."""
+def read_sheet(tab: str) -> pd.DataFrame:
+    if not USE_SHEETS:
+        raise RuntimeError("Sheets desativado.")
     try:
         sh = _open_sheet()
+        ws = sh.worksheet(tab)
+        values = ws.get_all_values()
+        if not values: return pd.DataFrame()
+        header = [h.strip() for h in values[0]]
+        data = values[1:]
+        # pad rows
+        data = [row + [""]*(len(header)-len(row)) for row in data]
+        df = pd.DataFrame(data, columns=header)
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+def append_rows(tab: str, rows: list[list]) -> bool:
+    """Append rows to a worksheet. rows = list of lists in header order."""
+    try:
+        sh = _open_sheet()
+        # ensure exists
         try:
-            if "_ws_cache" in st.session_state and sheet_name in st.session_state["_ws_cache"]:
-                ws = st.session_state["_ws_cache"][sheet_name]
-            else:
-                ws = sh.worksheets()[0] if sh.worksheets() else sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(df.columns), 10))
-                if ws.title != sheet_name:
-                    ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(df.columns), 10))
+            ws = sh.worksheet(tab)
         except Exception:
-            ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=max(len(df.columns), 10))
-        ws.clear()
-        if df.empty:
-            ws.update([REQUIRED_TABS.get(sheet_name, [])])
-        else:
-            ws.update([df.columns.tolist()] + df.astype(str).values.tolist())
-    except Exception as e:
-        st.error(f"Erro ao atualizar aba '{sheet_name}': {e}")
+            ws = sh.add_worksheet(title=tab, rows=1000, cols=50)
+        ws.append_rows(rows, value_input_option="USER_ENTERED")
+        # clear caches
+        read_sheet.clear()
+        return True
+    except Exception:
+        return False
 
-# ============================================================
-# 📦 CSV locais (seeding + leitura robusta)
-# ============================================================
-def ensure_files():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    if not os.path.exists(AVALIACOES_CSV):
-        pd.DataFrame(columns=REQUIRED_TABS["avaliacoes"]).to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
-    if not os.path.exists(FECHOS_CSV):
-        pd.DataFrame(columns=REQUIRED_TABS["fechos"]).to_csv(FECHOS_CSV, index=False, encoding="utf-8")
-
-def _read_csv_flex(path: str) -> pd.DataFrame:
-    """Lê CSV aceitando vírgula ou ponto e vírgula; tenta utf-8 depois latin-1."""
-    for enc in ("utf-8", "latin-1"):
+# =========================
+# Loaders (Sheets + fallback CSV)
+# =========================
+def _read_csv_flex(path: str, columns: list[str] | None = None) -> pd.DataFrame:
+    if not os.path.exists(path):
+        return pd.DataFrame(columns=columns or [])
+    for enc in ("utf-8","latin-1"):
         try:
-            return pd.read_csv(path, sep=None, engine="python", encoding=enc)
+            df = pd.read_csv(path, sep=None, engine="python", encoding=enc)
+            return df
         except Exception:
             continue
     return pd.read_csv(path)
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=120)
 def load_players() -> pd.DataFrame:
-    ensure_files()
-    df = _read_csv_flex(PLAYERS_CSV)
-    df.columns = [c.strip().lower() for c in df.columns]
-    colmap = {}
-    for c in list(df.columns):
-        if c in ["id","player_id","identificador","id_jogador"]:
-            colmap[c] = "id"
-        elif c in ["numero","número","num","nr"]:
-            colmap[c] = "numero"
-        elif c in ["nome","jogador","player","nome_jogador"]:
-            colmap[c] = "nome"
-    df = df.rename(columns=colmap)
-    missing = [c for c in ["id","numero","nome"] if c not in df.columns]
-    if missing:
-        st.error(f"`data/jogadores.csv` inválido. Falta(m): {missing}. Esperado: id,numero,nome.")
+    df = read_sheet("players") if USE_SHEETS else _read_csv_flex(PLAYERS_CSV)
+    if df.empty:
+        st.error("Aba 'players' vazia ou inexistente. Esperado: player_id|numero|nome|category")
         st.stop()
-    df["id"] = pd.to_numeric(df["id"], errors="coerce")
-    df["numero"] = pd.to_numeric(df["numero"], errors="coerce")
-    df["nome"] = df["nome"].astype(str).str.strip()
-    df = df.dropna(subset=["id","numero","nome"]).copy()
-    df["id"] = df["id"].astype(int)
-    df["numero"] = df["numero"].astype(int)
-    df = df.drop_duplicates(subset=["id"]).sort_values("numero")
+    df.columns = [c.strip().lower() for c in df.columns]
+    need = {"player_id","numero","nome","category"}
+    if not need.issubset(df.columns):
+        st.error("Aba 'players' inválida. Esperado: player_id|numero|nome|category")
+        st.stop()
+    df["player_id"] = pd.to_numeric(df["player_id"], errors="coerce").astype("Int64")
+    df["numero"]    = pd.to_numeric(df["numero"], errors="coerce").astype("Int64")
+    df["nome"]      = df["nome"].astype(str).str.strip()
+    df["category"]  = df["category"].astype(str).str.strip().str.upper()
+    df = df.dropna(subset=["player_id","numero","nome","category"])
+    df["player_id"] = df["player_id"].astype(int)
+    df["numero"]    = df["numero"].astype(int)
+    df = df.drop_duplicates(subset=["player_id"]).sort_values("numero")
     return df
 
-@st.cache_data(ttl=5)
-def load_functions() -> pd.DataFrame:
-    ensure_files()
-    df = _read_csv_flex(FUNCOES_CSV)
-    df.columns = [c.strip().lower() for c in df.columns]
-    colmap = {}
-    for c in list(df.columns):
-        if c in ["codigo","código","cod","code"]:
-            colmap[c] = "codigo"
-        elif c in ["nome","funcao","função","role"]:
-            colmap[c] = "nome"
-        elif c in ["familia","família","grupo","family"]:
-            colmap[c] = "familia"
-    df = df.rename(columns=colmap)
-    missing = [c for c in ["codigo","nome","familia"] if c not in df.columns]
-    if missing:
-        st.error(f"`data/funcoes.csv` inválido. Falta(m): {missing}. Esperado: codigo,nome,familia.")
+@st.cache_data(ttl=120)
+def load_metrics() -> pd.DataFrame:
+    df = read_sheet("metrics")
+    if df.empty:
+        st.error("Aba 'metrics' vazia. Esperado: metric_id|label|scope|group|category|obrigatorio|ordem")
         st.stop()
-    df["codigo"]  = df["codigo"].astype(str).str.strip()
-    df["nome"]    = df["nome"].astype(str).str.strip()
-    df["familia"] = df["familia"].astype(str).str.strip()
-    df = df.dropna(subset=["codigo","nome"]).copy()
-    df = df.drop_duplicates(subset=["codigo"]).sort_values(["familia","nome"])
+    df.columns = [c.strip().lower() for c in df.columns]
+    need = {"metric_id","label","scope","group","category","obrigatorio","ordem"}
+    if not need.issubset(df.columns):
+        st.error("Colunas em falta na aba 'metrics'.")
+        st.stop()
+    df["metric_id"]   = df["metric_id"].astype(str).str.strip().str.upper()
+    df["label"]       = df["label"].astype(str).str.strip()
+    df["scope"]       = df["scope"].astype(str).str.strip().str.lower()
+    df["group"]       = df["group"].astype(str).str.strip().str.lower()
+    df["category"]    = df["category"].astype(str).str.strip().str.upper()
+    df["obrigatorio"] = df["obrigatorio"].astype(str).str.strip().str.upper().isin(["TRUE","1","YES","SIM"])
+    df["ordem"]       = pd.to_numeric(df["ordem"], errors="coerce").fillna(9999).astype(int)
+    df = df.drop_duplicates(subset=["metric_id"]).sort_values(["scope","group","category","ordem","metric_id"])
     return df
 
-# ============================================================
-# 📊 Reader/Writer (Sheets bulk + CSV fallback)
-# ============================================================
-def read_avaliacoes() -> pd.DataFrame:
-    if USE_SHEETS:
-        df_av, _ = gs_read_bulk()
-        return df_av
-    else:
-        return pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame()
+@st.cache_data(ttl=120)
+def load_avaliacoes() -> pd.DataFrame:
+    df = read_sheet("avaliacoes") if USE_SHEETS else _read_csv_flex(AVALIACOES_CSV)
+    if df.empty:
+        cols = ["timestamp","ano","mes","avaliador","player_id","player_numero","player_nome","player_category","metric_id","score","observacoes"]
+        return pd.DataFrame(columns=cols)
+    df.columns = [c.strip().lower() for c in df.columns]
+    return df
 
-def read_fechos() -> pd.DataFrame:
-    if USE_SHEETS:
-        _, df_f = gs_read_bulk()
-        return df_f
-    else:
-        return pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame()
+@st.cache_data(ttl=120)
+def load_fechos() -> pd.DataFrame:
+    df = read_sheet("fechos") if USE_SHEETS else pd.DataFrame()
+    if df.empty:
+        return pd.DataFrame(columns=["timestamp","ano","mes","avaliador","completos","total","status"])
+    df.columns = [c.strip().lower() for c in df.columns]
+    return df
 
-def save_avaliacao(row: dict):
+def save_avaliacoes_bulk(rows_dicts: list[dict]):
+    # Sheets: append em lote
+    header = ["timestamp","ano","mes","avaliador","player_id","player_numero","player_nome","player_category","metric_id","score","observacoes"]
+    rows = [[rd.get(k,"") for k in header] for rd in rows_dicts]
+    ok = False
     if USE_SHEETS:
-        ok = gs_append("avaliacoes", row)
-        gs_read_bulk.clear()  # invalida cache p/ refletir mais depressa
-        if not ok:
-            df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame(columns=REQUIRED_TABS["avaliacoes"])
-            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-            df.to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
-    else:
-        df = pd.read_csv(AVALIACOES_CSV) if os.path.exists(AVALIACOES_CSV) else pd.DataFrame(columns=REQUIRED_TABS["avaliacoes"])
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        ok = append_rows("avaliacoes", rows)
+    if not ok:
+        # fallback CSV
+        df = _read_csv_flex(AVALIACOES_CSV, columns=header)
+        df = pd.concat([df, pd.DataFrame(rows, columns=header)], ignore_index=True)
         df.to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
+    # clear caches para refletir progresso
+    load_avaliacoes.clear()
 
-def fechar_mes(avaliador: str, ano: int, mes: int, completos: int, total: int):
-    row = {
-        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-        "ano": int(ano), "mes": int(mes),
-        "avaliador": avaliador, "completos": int(completos), "total": int(total),
-        "status": "FECHADO" if completos == total else "INCOMPLETO",
-    }
+def save_funcoes_tag(ano:int, mes:int, avaliador:str, player_id:int, funcoes_text:str):
+    header = ["timestamp","ano","mes","avaliador","player_id","funcoes"]
+    row = [[datetime.utcnow().isoformat(), ano, mes, avaliador, player_id, funcoes_text]]
+    ok = False
     if USE_SHEETS:
-        ok = gs_append("fechos", row)
-        gs_read_bulk.clear()
-        if not ok:
-            df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame(columns=REQUIRED_TABS["fechos"])
-            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-            df.to_csv(FECHOS_CSV, index=False, encoding="utf-8")
-    else:
-        df = pd.read_csv(FECHOS_CSV) if os.path.exists(FECHOS_CSV) else pd.DataFrame(columns=REQUIRED_TABS["fechos"])
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-        df.to_csv(FECHOS_CSV, index=False, encoding="utf-8")
+        ok = append_rows("funcoes", row)
+    if not ok:
+        df = _read_csv_flex(FUNCOES_CSV, columns=header)
+        df = pd.concat([df, pd.DataFrame(row, columns=header)], ignore_index=True)
+        df.to_csv(FUNCOES_CSV, index=False, encoding="utf-8")
 
 # =========================
-# Regras de negócio úteis
+# Helpers
 # =========================
-def trimmed_mean(vals):
-    """Média aparada: exclui a maior e a menor quando n>=3."""
-    vals = [float(v) for v in vals if pd.notna(v)]
-    n = len(vals)
-    if n == 0: return None
-    if n >= 3: return (sum(vals) - min(vals) - max(vals)) / (n - 2)
-    return sum(vals)/n
-
-def foto_path_for(player_id: int, size: int = 44) -> str:
-    """
-    Devolve o caminho da foto do jogador (jpg/jpeg/png/webp).
-    Se não existir, devolve um placeholder do tamanho pedido.
-    """
+def foto_path_for(player_id: int, size: int = 60) -> str:
     base = f"assets/fotos/{player_id}"
-    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+    for ext in (".jpg",".jpeg",".png",".webp"):
         p = base + ext
-        if os.path.exists(p):
-            return p
+        if os.path.exists(p): return p
     return f"https://placehold.co/{size}x{size}/cccccc/ffffff?text=%20"
 
-def is_completed(df: pd.DataFrame, avaliador: str, ano: int, mes: int, player_id: int) -> bool:
-    """Verifica se já existe avaliação para determinado jogador/avaliador/mês (tolerante a df vazio)."""
-    if df is None or df.empty:
+def metrics_for_category(metrics: pd.DataFrame, category: str) -> dict[str, pd.DataFrame]:
+    """Devolve dict com secções: enc_pot, fisicos, mentais, especificos"""
+    enc_pot = metrics[metrics["metric_id"].isin(["ENC_PERFIL","POT_FUT"])].copy()
+    fis = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="fisicos")].copy()
+    men = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="mentais")].copy()
+    esp = metrics[(metrics["scope"]=="especifico") & (metrics["group"]=="categoria") & (metrics["category"]==category)].copy()
+    return {"enc_pot": enc_pot, "fisicos": fis, "mentais": men, "especificos": esp}
+
+def trimmed_mean(values: list[float]) -> float | None:
+    vals = [float(v) for v in values if pd.notna(v)]
+    n = len(vals)
+    if n == 0: return None
+    if n >= 3:
+        return (sum(vals) - min(vals) - max(vals)) / (n - 2)
+    return sum(vals)/n
+
+def is_completed_for_player(av_df: pd.DataFrame, metrics: pd.DataFrame, avaliador: str, ano:int, mes:int, player_id:int, player_cat:str) -> bool:
+    # nº obrigatórias que se aplicam ao jogador
+    sec = metrics_for_category(metrics, player_cat)
+    req = pd.concat([
+        sec["enc_pot"][sec["enc_pot"]["obrigatorio"]],
+        sec["fisicos"][sec["fisicos"]["obrigatorio"]],
+        sec["mentais"][sec["mentais"]["obrigatorio"]],
+        sec["especificos"][sec["especificos"]["obrigatorio"]],
+    ], ignore_index=True)
+    needed = set(req["metric_id"].tolist())
+
+    if av_df.empty or needed == set():
         return False
-    needed = {"avaliador", "ano", "mes", "player_id"}
-    if not needed.issubset(set(df.columns)):
-        return False
+    df = av_df
     try:
-        mask = (
-            (df["avaliador"].astype(str) == str(avaliador))
-            & (df["ano"].astype(int) == int(ano))
-            & (df["mes"].astype(int) == int(mes))
-            & (df["player_id"].astype(int) == int(player_id))
-        )
-        return not df.loc[mask].empty
+        m = ((df["avaliador"].astype(str)==avaliador) &
+             (df["ano"].astype(int)==int(ano)) &
+             (df["mes"].astype(int)==int(mes)) &
+             (df["player_id"].astype(int)==int(player_id)))
+        got = set(df.loc[m, "metric_id"].astype(str).str.upper().tolist())
+        return needed.issubset(got)
     except Exception:
         return False
 
 # =========================
-# Carregamento base + Sidebar (branding + período)
+# Carregar dados
 # =========================
 players = load_players()
-funcs   = load_functions()
+metrics = load_metrics()
+aval_all = load_avaliacoes()
+fechos   = load_fechos()
 
-# memória local de avaliações feitas nesta sessão (perfil, ano, mes, player_id)
 if "session_completed" not in st.session_state:
-    st.session_state["session_completed"] = set()
+    st.session_state["session_completed"]=set()
 
-# --- Sidebar: branding ajustado, sem espaço morto no topo ---
-logo_path = "assets/logo.png"
+# =========================
+# Sidebar — Branding, período, perfil, lista
+# =========================
 with st.sidebar:
-    # Remove padding superior com CSS customizado
-    st.markdown(
-        """
-        <style>
-            section[data-testid="stSidebar"] div[role="document"] {
-                padding-top: 0rem !important;
-            }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown("<div class='sidebar-brand' style='margin-top:-10px;'>", unsafe_allow_html=True)
+    logo = "assets/logo.png"
+    st.image(logo if os.path.exists(logo) else "https://placehold.co/140x140?text=Logo", width=140, clamp=True)
+    st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # Cria colunas para centralizar o logo
-    cL, cC, cR = st.columns([1, 2, 1])
-    with cC:
-        if os.path.exists(logo_path):
-            st.image(
-                logo_path,
-                width=130,           # ajusta aqui se quiser maior/menor
-                use_column_width=False,
-                clamp=True
-            )
-        else:
-            st.image("https://placehold.co/130x130?text=Logo", width=130)
-
-    # Título centrado logo abaixo do símbolo
-    st.markdown(
-        f"""
-        <div style='text-align:center;
-                    color:{PRIMARY};
-                    font-weight:800;
-                    font-size:15px;
-                    margin-top:-6px;
-                    margin-bottom:16px;'>
-            Leixões SC — Avaliação de Plantel
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
+    # Período
     today = datetime.today()
-    if "ano" not in st.session_state:
-        st.session_state["ano"] = today.year
-    if "mes" not in st.session_state:
-        st.session_state["mes"] = today.month
+    if "ano" not in st.session_state: st.session_state["ano"]=today.year
+    if "mes" not in st.session_state: st.session_state["mes"]=today.month
+    st.session_state["ano"] = st.number_input("Ano", min_value=2024, max_value=2100, value=st.session_state["ano"], step=1)
+    st.session_state["mes"] = st.selectbox("Mês", list(range(1,13)), index=st.session_state["mes"]-1,
+                                           format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize())
 
-    st.session_state["ano"] = st.number_input("Ano", min_value=2024, max_value=2100,
-                                              value=st.session_state["ano"], step=1)
-    st.session_state["mes"] = st.selectbox(
-        "Mês",
-        list(range(1, 13)),
-        index=st.session_state["mes"] - 1,
-        format_func=lambda m: datetime(2000, m, 1).strftime("%B").capitalize(),
-    )
+    st.markdown("---")
+    st.write("**Utilizador**")
+    PERFIS = [
+        "Treinador Principal",
+        "Treinador Adjunto 1",
+        "Treinador Adjunto 2",
+        "Treinador Adjunto 3",
+        "Diretor Executivo",
+        "Diretor Desportivo",
+        "Lead Scout",
+        "Administrador",
+    ]
+    perfil = st.selectbox("Perfil", PERFIS)
+    if perfil=="Administrador":
+        code = st.text_input("Código de acesso", type="password", value="")
+        if code != "leixoes2025":
+            st.warning("Acesso restrito: introduza o código.")
+            st.stop()
 
-ano = int(st.session_state["ano"])
-mes = int(st.session_state["mes"])
+    st.markdown("---")
+    st.write("🏃 **Jogadores**")
 
-st.sidebar.markdown("---")
-st.sidebar.markdown('<div class="sidebar-title" style="color:#333;font-weight:700;">Utilizador</div>', unsafe_allow_html=True)
-perfil = st.sidebar.selectbox(
-    "Perfil",
-    ["Utilizador 1","Utilizador 2","Utilizador 3","Utilizador 4","Utilizador 5","Utilizador 6","Utilizador 7","Administrador"]
-)
+ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 
-if perfil == "Administrador":
-    codigo = st.sidebar.text_input("Código de acesso", type="password", value="")
-    if codigo != "leixoes2025":
-        st.sidebar.warning("Acesso restrito: introduza o código.")
-        st.stop()
-
-st.sidebar.markdown("---")
-st.sidebar.write("🏃 **Jogadores**")
-
-# Leitura (bulk) 1x por rerun
-df_all, df_fechos = read_avaliacoes(), read_fechos()
-
-def completed_for_player(pid: int) -> bool:
-    """Combina estado local e dados na Sheet, tolerante a erros."""
-    try:
-        in_session = (perfil, ano, mes, pid) in st.session_state["session_completed"]
-    except Exception:
-        in_session = False
-    try:
-        in_sheet = is_completed(df_all, perfil, ano, mes, pid)
-    except Exception:
-        in_sheet = False
+# progresso
+def completed_for_player(pid:int, pcat:str)->bool:
+    in_session = (perfil,ano,mes,pid) in st.session_state["session_completed"]
+    in_sheet   = is_completed_for_player(aval_all, metrics, perfil, ano, mes, pid, pcat)
     return in_session or in_sheet
 
-completos_ids = [int(pid) for pid in players["id"].tolist() if completed_for_player(int(pid))]
+completos_ids = []
+for _, r in players.iterrows():
+    pid, pcat = int(r["player_id"]), str(r["category"]).upper()
+    if completed_for_player(pid, pcat): completos_ids.append(pid)
 st.sidebar.progress(len(completos_ids)/len(players), text=f"Completos: {len(completos_ids)}/{len(players)}")
 
-# Seleção do jogador
+# seleção
 if "selecionado_id" not in st.session_state:
-    st.session_state["selecionado_id"] = int(players.iloc[0].id)
+    st.session_state["selecionado_id"] = int(players.iloc[0]["player_id"])
 selecionado_id = st.session_state["selecionado_id"]
 
-# ---- Lista de jogadores (img 60x60 / botão / dot) ----
-# ---- Lista de jogadores (img 60x60 / botão / dot) ----
+# lista
 for _, row in players.iterrows():
-    pid   = int(row["id"])
+    pid   = int(row["player_id"])
     foto  = foto_path_for(pid, 60)
     label = f"#{int(row['numero']):02d} — {row['nome']}"
-
     with st.sidebar.container():
         st.markdown("<div class='player-item player-row-fixed'>", unsafe_allow_html=True)
-
-        # colunas: imagem / botão / dot (sem espaço morto)
-        c1, c2, c3 = st.columns([0.55, 1.35, 0.10], gap="small")
-
+        c1,c2,c3 = st.columns([0.55,1.35,0.10], gap="small")
         with c1:
             st.markdown("<div class='img-wrap'>", unsafe_allow_html=True)
-            st.image(foto, width=60, clamp=True)  # força 60px
+            st.image(foto, width=60, clamp=True)
             st.markdown("</div>", unsafe_allow_html=True)
-
         with c2:
             st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
-            if st.button(label, key=f"sel_{pid}"):
-                selecionado_id = pid
+            if st.button(label, key=f"sel_{pid}"): selecionado_id = pid
             st.markdown("</div>", unsafe_allow_html=True)
-
-        done = completed_for_player(pid)
         with c3:
-            st.markdown(
-                f"<span class='status-dot {'status-done' if done else 'status-pending'}'></span>",
-                unsafe_allow_html=True
-            )
-
+            done = completed_for_player(pid, str(row["category"]).upper())
+            st.markdown(f"<span class='status-dot {'status-done' if done else 'status-pending'}'></span>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-st.session_state["selecionado_id"] = selecionado_id
-selecionado = players[players["id"]==selecionado_id].iloc[0]
-
+st.session_state["selecionado_id"]=selecionado_id
+sel = players[players["player_id"]==selecionado_id].iloc[0]
+sel_cat = str(sel["category"]).upper()
 
 # =========================
 # Layout principal
 # =========================
 col1, col2 = st.columns([1.2, 2.2], gap="large")
 
+# ---- COL1: Jogador + Formulário Dinâmico
 with col1:
     st.markdown("#### Jogador selecionado")
-    lsp, center, rsp = st.columns([1,2,1])
-    with center:
-        st.markdown(
-            f"<div class='player-hero-title'><span class='badge'>#{int(selecionado['numero'])}</span> {selecionado['nome']}</div>",
-            unsafe_allow_html=True
-        )
-        st.image(foto_path_for(int(selecionado['id']), 220), width=220, clamp=True)
+    _, mid, _ = st.columns([1,2,1])
+    with mid:
+        st.markdown(f"<div class='player-hero-title'><span class='badge'>#{int(sel['numero'])}</span> {sel['nome']}</div>", unsafe_allow_html=True)
+        st.image(foto_path_for(int(sel['player_id']), 220), width=220, clamp=True)
 
-    # Formulário
     st.markdown("### Formulário de Avaliação")
 
+    # Obter métricas aplicáveis
+    secs = metrics_for_category(metrics, sel_cat)
+
+    # Radio sem pré-seleção (usa “—”)
     def nota(label: str, key: str):
-        """
-        Compatível com todas as versões: mostra um '—' inicial (sem valor) e
-        só passa a 1..4 depois do clique do utilizador.
-        """
         opcoes = ["—", 1, 2, 3, 4]
         escolha = st.radio(label, opcoes, horizontal=True, index=0, key=key)
         return None if escolha == "—" else escolha
 
-    encaixe   = nota("Encaixe no Perfil Leixões",       f"n_encaixe_{selecionado_id}_{ano}_{mes}_{perfil}")
-    fisicas   = nota("Capacidades Físicas Exigidas",    f"n_fisicas_{selecionado_id}_{ano}_{mes}_{perfil}")
-    mentais   = nota("Capacidades Mentais Exigidas",    f"n_mentais_{selecionado_id}_{ano}_{mes}_{perfil}")
-    imp_of    = nota("Impacto Ofensivo na Equipa",      f"n_impof_{selecionado_id}_{ano}_{mes}_{perfil}")
-    imp_def   = nota("Impacto Defensivo na Equipa",     f"n_impdef_{selecionado_id}_{ano}_{mes}_{perfil}")
-    potencial = nota("Potencial Futuro",                 f"n_pot_{selecionado_id}_{ano}_{mes}_{perfil}")
+    respostas = {}  # metric_id -> score
 
-    mult_opts = funcs["nome"].tolist()
-    fun_sel = st.multiselect("Funções (obrigatório)", options=mult_opts, help="Pode escolher várias.")
+    # Seção Encaixe & Potencial
+    if not secs["enc_pot"].empty:
+        st.markdown("##### Encaixe & Potencial")
+        for _, m in secs["enc_pot"].iterrows():
+            mid = m["metric_id"]; lab = m["label"]
+            val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
+            respostas[mid] = val
+
+    # Transversais Físicos
+    if not secs["fisicos"].empty:
+        st.markdown("##### Parâmetros Físicos (Transversais)")
+        for _, m in secs["fisicos"].iterrows():
+            mid = m["metric_id"]; lab = m["label"]
+            val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
+            respostas[mid] = val
+
+    # Transversais Mentais
+    if not secs["mentais"].empty:
+        st.markdown("##### Parâmetros Mentais (Transversais)")
+        for _, m in secs["mentais"].iterrows():
+            mid = m["metric_id"]; lab = m["label"]
+            val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
+            respostas[mid] = val
+
+    # Específicos da Categoria
+    if not secs["especificos"].empty:
+        st.markdown(f"##### Específicos da Posição ({sel_cat})")
+        for _, m in secs["especificos"].iterrows():
+            mid = m["metric_id"]; lab = m["label"]
+            val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
+            respostas[mid] = val
+
+    # Tagging de Funções (Opção B)
+    funcoes_text = st.text_input("Funções (tagging opcional — separa por ';')", value="")
+
     obs = st.text_area("Observações (visível apenas ao Administrador)")
 
-    notas = [encaixe,fisicas,mentais,imp_of,imp_def,potencial]
-    faltam_notas = any(v is None for v in notas)
-    faltam_funcoes = len(fun_sel)==0
-    can_submit = (not faltam_notas) and (not faltam_funcoes)
+    # Validação: todas obrigatórias respondidas
+    obrig = pd.concat([
+        secs["enc_pot"][secs["enc_pot"]["obrigatorio"]],
+        secs["fisicos"][secs["fisicos"]["obrigatorio"]],
+        secs["mentais"][secs["mentais"]["obrigatorio"]],
+        secs["especificos"][secs["especificos"]["obrigatorio"]],
+    ], ignore_index=True)["metric_id"].tolist()
+
+    faltam = [mid for mid in obrig if (respostas.get(mid) is None)]
+    can_submit = (len(faltam)==0)
 
     if st.button("Submeter avaliação", type="primary", disabled=not can_submit):
-        row = dict(
-            timestamp=datetime.utcnow().isoformat(),
-            ano=ano, mes=mes, avaliador=perfil,
-            player_id=int(selecionado["id"]), player_numero=int(selecionado["numero"]), player_nome=selecionado["nome"],
-            encaixe=int(encaixe), fisicas=int(fisicas), mentais=int(mentais),
-            impacto_of=int(imp_of), impacto_def=int(imp_def), potencial=int(potencial),
-            funcoes=";".join(fun_sel), observacoes=obs.replace("\n"," ").strip()
+        ts = datetime.utcnow().isoformat()
+        base = dict(
+            timestamp=ts, ano=ano, mes=mes, avaliador=perfil,
+            player_id=int(sel["player_id"]), player_numero=int(sel["numero"]), player_nome=sel["nome"],
+            player_category=sel_cat, observacoes=obs.replace("\n"," ").strip()
         )
-        save_avaliacao(row)
-        st.session_state["session_completed"].add((perfil,ano,mes,int(selecionado["id"])))
+        rows = []
+        for mid, val in respostas.items():
+            if val is None: continue
+            rd = base.copy()
+            rd["metric_id"] = str(mid).upper()
+            rd["score"] = int(val)
+            rows.append(rd)
+        if rows:
+            save_avaliacoes_bulk(rows)
+        if funcoes_text.strip():
+            save_funcoes_tag(ano, mes, perfil, int(sel["player_id"]), funcoes_text.strip())
+        st.session_state["session_completed"].add((perfil,ano,mes,int(sel["player_id"])))
         st.success("✅ Avaliação registada.")
         st.rerun()
 
-    if faltam_notas:
-        st.info("⚠️ Selecione uma opção (1–4) em todas as dimensões.")
-    elif faltam_funcoes:
-        st.info("⚠️ Selecione pelo menos uma função.")
+    if not can_submit:
+        st.info("⚠️ Responda todas as métricas obrigatórias (1–4) antes de submeter.")
 
-    # Estado do mês + Submeter mês
-    df_all = read_avaliacoes()
-    completos = [int(pid) for pid in players["id"].tolist() if is_completed(df_all, perfil, ano, mes, int(pid)) or (perfil,ano,mes,int(pid)) in st.session_state["session_completed"]]
-    falta = len(players) - len(completos)
+    # Estado do mês + Submeter mês (por avaliador)
+    aval_all = load_avaliacoes()
+    completos = [int(r["player_id"]) for _, r in players.iterrows()
+                 if is_completed_for_player(aval_all, metrics, perfil, ano, mes, int(r["player_id"]), str(r["category"]).upper())]
     st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
-    ja_fechado = False
-    if not df_fechos.empty:
-        mask = (df_fechos.get("avaliador","")==perfil) & (df_fechos.get("ano",0)==ano) & (df_fechos.get("mes",0)==mes)
-        ja_fechado = not df_fechos[mask].empty
-    if st.button("✅ Submeter mês (tudo preenchido)", type="secondary", disabled=(falta>0) or ja_fechado):
-        fechar_mes(perfil, ano, mes, len(completos), len(players))
-        st.success("📌 Mês marcado como submetido para este avaliador.")
-        st.rerun()
 
-# ======== COLUNA DIREITA — INSTRUÇÕES + BLOCO DO ADMIN ========
+# ---- COL2: Instruções + Painel Admin com 3 radares
 with col2:
     st.markdown("#### Instruções")
+    st.markdown("""
+    <ol style="line-height:1.7; font-size:.95rem;">
+      <li>Escolha o <strong>jogador</strong> na barra lateral.</li>
+      <li>Preencha todos os <strong>parâmetros obrigatórios</strong> (1–4).</li>
+      <li>Clique <strong>Submeter avaliação</strong> — a gravação é 1 linha por métrica.</li>
+    </ol>
+    <p style="font-style: italic; font-size:.9rem;">
+      As avaliações só são visíveis ao <strong>Administrador</strong>. O mês fecha quando os <strong>25/25</strong> estiverem completos.
+    </p>
+    """, unsafe_allow_html=True)
 
-    # Bloco de instruções principais (igual para todos)
-    st.markdown(
-        """
-        <ol style="line-height: 1.7; font-size: 0.95rem;">
-            <li>Escolha o seu <strong>nome</strong> como Perfil em <strong>Utilizador</strong>.</li>
-            <li>Escolha o <strong>jogador</strong> na barra lateral.</li>
-            <li>Preencha as <strong>seis dimensões</strong> (1–4) e selecione as <strong>funções</strong> (pode escolher várias).</li>
-            <li>Clique <strong>Submeter avaliação</strong> para registar o mês selecionado.</li>
-        </ol>
-        <p style="font-style: italic; font-size: 0.9rem;">
-            As submissões ficam visíveis apenas ao <strong>Administrador</strong>.<br>
-            O botão <strong>Submeter mês</strong> só fica ativo quando os <strong>25/25</strong> jogadores estiverem preenchidos.
-        </p>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # -----------------------------------------------------------------
-    # BLOCO ADICIONAL VISÍVEL APENAS PARA O ADMINISTRADOR
-    # -----------------------------------------------------------------
     if perfil == "Administrador":
         st.markdown("---")
-        st.markdown("#### Painel do Administrador")
+        st.markdown("#### Painel do Administrador — Radar do Jogador Selecionado")
 
-        # Dados agregados das avaliações
-        total_avaliacoes = len(df_all) if 'df_all' in locals() else 0
-        total_fechos = len(df_fechos) if 'df_fechos' in locals() else 0
+        # Filtrar avaliações do jogador selecionado no período
+        df = load_avaliacoes()
+        if not df.empty:
+            try:
+                m = ((df["ano"].astype(int)==ano) &
+                     (df["mes"].astype(int)==mes) &
+                     (df["player_id"].astype(int)==int(sel["player_id"])))
+                d = df.loc[m].copy()
+            except Exception:
+                d = pd.DataFrame()
+        else:
+            d = pd.DataFrame()
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.metric("Avaliações registadas", total_avaliacoes)
-        with col_b:
-            st.metric("Fechos mensais", total_fechos)
+        if d.empty:
+            st.info("Ainda não há avaliações para este jogador neste mês.")
+        else:
+            # agregar por metric_id com regra anti-viés
+            d["score"] = pd.to_numeric(d["score"], errors="coerce")
+            agg = (d.groupby("metric_id")["score"]
+                     .apply(lambda s: trimmed_mean(s.tolist()))
+                     .reset_index().rename(columns={"score":"tm"}))
 
-        # Botão opcional de atualização
-        if st.button("🔄 Atualizar dados", type="secondary"):
-            st.cache_data.clear()
-            st.rerun()
+            # mapear label e grupo a partir do dicionário 'metrics'
+            md = metrics[["metric_id","label","group","category"]].drop_duplicates()
+            merged = agg.merge(md, on="metric_id", how="left")
 
-        # (opcional) — exportar dados
-        st.download_button(
-            "⬇️ Exportar avaliações (CSV)",
-            df_all.to_csv(index=False).encode("utf-8") if 'df_all' in locals() else b"",
-            "avaliacoes.csv",
-            "text/csv",
-        )
+            def radar_for(group_name: str, title: str):
+                dsub = merged[merged["group"]==group_name].dropna(subset=["tm"])
+                if dsub.empty:
+                    st.info(f"Sem dados para o radar: {title}")
+                    return
+                # ordena por label para estabilidade
+                dsub = dsub.sort_values("label")
+                fig = go.Figure()
+                fig.add_trace(go.Scatterpolar(
+                    r=dsub["tm"].tolist(),
+                    theta=dsub["label"].tolist(),
+                    fill='toself',
+                    name=title
+                ))
+                fig.update_layout(
+                    polar=dict(radialaxis=dict(visible=True, range=[1,4])),
+                    showlegend=False,
+                    margin=dict(l=20,r=20,t=30,b=20),
+                    title=title
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-    # -----------------------------------------------------------------
-    # Rodapé discreto
+            radar_for("fisicos", "Radar Físico")
+            radar_for("mentais", "Radar Mental")
+            # específicos apenas da categoria do jogador
+            merged_pos = merged[(merged["group"]=="categoria") & (merged["category"]==sel_cat)]
+            if merged_pos.empty:
+                st.info("Sem dados para o radar Específico da Posição.")
+            else:
+                dpos = merged_pos.dropna(subset=["tm"]).sort_values("label")
+                fig = go.Figure()
+                fig.add_trace(go.Scatterpolar(
+                    r=dpos["tm"].tolist(),
+                    theta=dpos["label"].tolist(),
+                    fill='toself',
+                    name="Posição"
+                ))
+                fig.update_layout(
+                    polar=dict(radialaxis=dict(visible=True, range=[1,4])),
+                    showlegend=False,
+                    margin=dict(l=20,r=20,t=30,b=20),
+                    title=f"Radar Específico ({sel_cat})"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
     st.markdown("---")
-    st.caption("© Leixões SC")
+    st.caption("© Leixões SC — Avaliação de Plantel")
