@@ -16,11 +16,17 @@ BLACK   = "#111111"
 GREEN   = "#2e7d32"
 USE_SHEETS = True
 
-st.set_page_config(
-    page_title="Leixões SC — Avaliação de Plantel",
-    page_icon="assets/logo_mini.png" if os.path.exists("assets/logo_mini.png") else None,
-    layout="wide",
-)
+# --- Sidebar: Branding centrado ---
+st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
+
+logo_path = "assets/logo.png"  # caminho do emblema
+if os.path.exists(logo_path):
+    st.image(logo_path, width=140, clamp=True)
+else:
+    st.image("https://placehold.co/140x140?text=Logo", width=140)
+
+st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 # =========================
 # CSS — Sidebar e Branding Leixões SC
