@@ -36,10 +36,44 @@ st.markdown(f"""
 }}
 section[data-testid="stSidebar"] div[role="document"] {{ padding-top: 0 !important; }}
 
-/* Branding centrado */
-[data-testid="stSidebar"] img {{ display:block; margin:0 auto; }}
-.sidebar-brand {{ display:flex; flex-direction:column; align-items:center; text-align:center; }}
-.sidebar-brand .brand-title {{ color:{PRIMARY}; font-weight:800; font-size:16px; margin-top:6px; }}
+# === Sidebar: logo e título centrados ===
+st.markdown(f"""
+<style>
+/* remove o espaço morto no topo da sidebar */
+section[data-testid="stSidebar"] div[role="document"] {{
+  padding-top: 0 !important;
+}}
+/* força centralização de qualquer imagem na sidebar */
+section[data-testid="stSidebar"] img {{
+  display:block; margin:0 auto;
+}}
+/* bloco do branding */
+.sidebar-brand {{
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  margin-top:-12px;    /* puxa ligeiramente para cima (ajusta se precisares) */
+  margin-bottom:12px;
+}}
+.sidebar-brand .brand-title {{
+  color:{PRIMARY};    /* usa a tua variável cor Leixões */
+  font-weight:800;    /* bold */
+  font-size:16px;
+  margin-top:6px;
+}}
+</style>
+""", unsafe_allow_html=True)
+
+# --- Sidebar: Branding centrado ---
+st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
+
+logo_path = "assets/logo.png"  # coloca aqui o caminho do teu emblema
+if os.path.exists(logo_path):
+    st.image(logo_path, width=140, clamp=True)   # ajusta o tamanho se quiseres (ex.: 130–160)
+else:
+    st.image("https://placehold.co/140x140?text=Logo", width=140)
+
+st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 /* Lista jogadores (60px alinhado) */
 .player-item {{ margin-bottom:10px; }}
