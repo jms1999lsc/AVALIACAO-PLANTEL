@@ -1,51 +1,49 @@
-# app.py — Leixões SC — Avaliação de Plantel (v2: métricas dinâmicas por categoria)
+# app.py — Leixões SC — Avaliação de Plantel (métricas dinâmicas + Sheets SoT)
 import os
 from datetime import datetime
-import unicodedata
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-# =========================
-# Config
-# =========================
-PRIMARY = "#d22222"
-BLACK   = "#111111"
-GREEN   = "#2e7d32"
+# ====================================
+# CONFIGURAÇÕES GERAIS DE AMBIENTE
+# ====================================
+
+# Fonte principal de dados (True = Google Sheets, False = CSV local)
 USE_SHEETS = True
 
-# --- Sidebar: Branding centrado ---
-st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
+# Cores de tema
+PRIMARY = "#d22222"  # vermelho Leixões
+BLACK   = "#111111"
+GREEN   = "#2e7d32"
 
-logo_path = "assets/logo.png"  # caminho do emblema
-if os.path.exists(logo_path):
-    st.image(logo_path, width=140, clamp=True)
-else:
-    st.image("https://placehold.co/140x140?text=Logo", width=140)
-
-st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+# Configurações da página
+st.set_page_config(
+    page_title="Leixões SC — Avaliação de Plantel",
+    page_icon="assets/logo_mini.png" if os.path.exists("assets/logo_mini.png") else "⚽",
+    layout="wide"
+)
 
 # =========================
-# CSS — Sidebar e Branding Leixões SC
+# CSS — Sidebar (315px) + Branding Leixões SC + UI
 # =========================
 st.markdown(f"""
 <style>
-/* --- Sidebar base --- */
+/* Sidebar com largura fixa 315px */
 [data-testid="stSidebar"] {{
   min-width: 315px !important;
   max-width: 315px !important;
   background-color: #f3f3f3;
-  padding-left: 0.6rem;
-  padding-right: 0.6rem;
+  padding-left: 0.8rem;
+  padding-right: 0.8rem;
 }}
 /* Remove espaço morto no topo da sidebar */
 section[data-testid="stSidebar"] div[role="document"] {{
   padding-top: 0 !important;
 }}
-/* Centralizar logo */
+/* Centralizar imagens da sidebar */
 section[data-testid="stSidebar"] img {{
   display: block;
   margin: 0 auto;
@@ -56,115 +54,65 @@ section[data-testid="stSidebar"] img {{
   flex-direction: column;
   align-items: center;
   text-align: center;
-  margin-top: -20px;      /* ajusta se quiseres mais acima/abaixo */
-  margin-bottom: 12px;
+  margin-top: -14px;        /* puxa o bloco para cima (ajusta se quiseres) */
+  margin-bottom: 14px;
 }}
 .sidebar-brand .brand-title {{
-  color: {PRIMARY};        /* vermelho Leixões */
-  font-weight: 800;        /* bold */
-  font-size: 16px;
+  color: {PRIMARY};         /* vermelho Leixões */
+  font-weight: 800;         /* bold */
+  font-size: 18px;
+  line-height: 1.2;
   margin-top: 6px;
   text-align: center;
 }}
-/* Ajuste para botões de jogador */
-.player-item {{
-  margin-bottom: 10px;
-}}
-.player-row-fixed {{
-  height: 60px;
-}}
+
+/* Lista de jogadores (60px altura; alinhamento imagem/botão/estado) */
+.player-item {{ margin-bottom: 10px; }}
+.player-row-fixed {{ height: 60px; }}
 .player-row-fixed [data-testid="column"] {{
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }}
 .player-row-fixed .img-wrap {{
-  width: 60px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 60px; height: 60px;
+  display: flex; align-items: center; justify-content: center;
 }}
 .player-row-fixed .img-wrap [data-testid="stImage"] {{
-  margin: 0 !important;
-  padding: 0 !important;
+  margin: 0 !important; padding: 0 !important;
 }}
 .player-row-fixed .img-wrap img {{
-  width: 60px !important;
-  height: 60px !important;
-  object-fit: cover;
-  border-radius: 10px;
-  display: block;
+  width: 60px !important; height: 60px !important; object-fit: cover;
+  border-radius: 10px; display: block;
 }}
-.player-row-fixed .btn-wrap .stButton {{
-  width: 100%;
-  margin: 0 !important;
-}}
+.player-row-fixed .btn-wrap .stButton {{ width: 100%; margin: 0 !important; }}
 .player-row-fixed .btn-wrap .stButton > button {{
-  width: 100% !important;
-  height: 60px !important;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  padding: 0 .60rem !important;
-  font-size: .96rem !important;
-  margin: 0 !important;
+  width: 100% !important; height: 60px !important;
+  display: flex; align-items: center; justify-content: flex-start;
+  white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
+  padding: 0 .70rem !important; font-size: 1.00rem !important; margin: 0 !important;
 }}
-.status-dot {{
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: inline-block;
-}}
-.status-done {{
-  background: #2e7d32;
-}}
-.status-pending {{
-  background: #cfcfcf;
-  border: 1px solid #bdbdbd;
-}}
-/* Títulos gerais */
-h1, h2, h3, h4 {{
-  color: #111111;
-}}
+.status-dot {{ width: 12px; height: 12px; border-radius: 50%; display: inline-block; }}
+.status-done {{ background: {GREEN}; }}
+.status-pending {{ background: #cfcfcf; border: 1px solid #bdbdbd; }}
+
+/* Títulos / botões / progresso */
+h1,h2,h3,h4 {{ color: {BLACK}; }}
 .stButton > button {{
-  background-color: {PRIMARY} !important;
-  color: #fff !important;
-  border: none !important;
-  border-radius: 8px !important;
-  padding: .55rem .9rem !important;
-  font-weight: 700 !important;
+  background-color: {PRIMARY} !important; color: #fff !important; border: none !important;
+  border-radius: 8px !important; padding: .55rem .9rem !important; font-weight: 700 !important;
 }}
-.stButton > button:disabled {{
-  opacity: .45 !important;
-}}
-[data-testid="stProgressBar"] > div > div {{
-  background: {PRIMARY} !important;
-}}
-.player-hero-title {{
-  text-align: center;
-  font-weight: 700;
-  margin: 8px 0 10px 0;
-}}
+.stButton > button:disabled {{ opacity: .45 !important; }}
+[data-testid="stProgressBar"] > div > div {{ background: {PRIMARY} !important; }}
+
+/* Hero do jogador */
+.player-hero-title {{ text-align: center; font-weight: 700; margin: 8px 0 10px 0; }}
 </style>
 """, unsafe_allow_html=True)
 
-
-# =========================
-# Paths fallback CSV
-# =========================
-DATA_DIR       = "data"
-PLAYERS_CSV    = os.path.join(DATA_DIR, "jogadores.csv")
-AVALIACOES_CSV = os.path.join(DATA_DIR, "avaliacoes.csv")
-FUNCOES_CSV    = os.path.join(DATA_DIR, "funcoes.csv")
-os.makedirs(DATA_DIR, exist_ok=True)
-
-# =========================
-# Google Sheets helpers
-# =========================
+# ==========================
+# GOOGLE SHEETS CONFIG + HELPERS
+# ==========================
 def _get_sheet_id():
     sid = None
     try:
@@ -200,15 +148,15 @@ def _open_sheet():
 @st.cache_data(ttl=120, show_spinner=False)
 def read_sheet(tab: str) -> pd.DataFrame:
     if not USE_SHEETS:
-        raise RuntimeError("Sheets desativado.")
+        return pd.DataFrame()
     try:
         sh = _open_sheet()
         ws = sh.worksheet(tab)
         values = ws.get_all_values()
-        if not values: return pd.DataFrame()
+        if not values:
+            return pd.DataFrame()
         header = [h.strip() for h in values[0]]
         data = values[1:]
-        # pad rows
         data = [row + [""]*(len(header)-len(row)) for row in data]
         df = pd.DataFrame(data, columns=header)
         return df
@@ -216,31 +164,36 @@ def read_sheet(tab: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 def append_rows(tab: str, rows: list[list]) -> bool:
-    """Append rows to a worksheet. rows = list of lists in header order."""
     try:
         sh = _open_sheet()
-        # ensure exists
         try:
             ws = sh.worksheet(tab)
         except Exception:
             ws = sh.add_worksheet(title=tab, rows=1000, cols=50)
         ws.append_rows(rows, value_input_option="USER_ENTERED")
-        # clear caches
         read_sheet.clear()
         return True
     except Exception:
         return False
 
-# =========================
-# Loaders (Sheets + fallback CSV)
-# =========================
+# ==========================
+# PATHS FALLBACK CSV
+# ==========================
+DATA_DIR       = "data"
+PLAYERS_CSV    = os.path.join(DATA_DIR, "jogadores.csv")
+AVALIACOES_CSV = os.path.join(DATA_DIR, "avaliacoes.csv")
+FUNCOES_CSV    = os.path.join(DATA_DIR, "funcoes.csv")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# ==========================
+# LOADERS (Sheets + fallback)
+# ==========================
 def _read_csv_flex(path: str, columns: list[str] | None = None) -> pd.DataFrame:
     if not os.path.exists(path):
         return pd.DataFrame(columns=columns or [])
     for enc in ("utf-8","latin-1"):
         try:
-            df = pd.read_csv(path, sep=None, engine="python", encoding=enc)
-            return df
+            return pd.read_csv(path, sep=None, engine="python", encoding=enc)
         except Exception:
             continue
     return pd.read_csv(path)
@@ -249,7 +202,7 @@ def _read_csv_flex(path: str, columns: list[str] | None = None) -> pd.DataFrame:
 def load_players() -> pd.DataFrame:
     df = read_sheet("players") if USE_SHEETS else _read_csv_flex(PLAYERS_CSV)
     if df.empty:
-        st.error("Aba 'players' vazia ou inexistente. Esperado: player_id|numero|nome|category")
+        st.error("Aba 'players' vazia/inexistente. Esperado: player_id|numero|nome|category")
         st.stop()
     df.columns = [c.strip().lower() for c in df.columns]
     need = {"player_id","numero","nome","category"}
@@ -260,7 +213,7 @@ def load_players() -> pd.DataFrame:
     df["numero"]    = pd.to_numeric(df["numero"], errors="coerce").astype("Int64")
     df["nome"]      = df["nome"].astype(str).str.strip()
     df["category"]  = df["category"].astype(str).str.strip().str.upper()
-    df = df.dropna(subset=["player_id","numero","nome","category"])
+    df = df.dropna(subset=["player_id","numero","nome","category"]).copy()
     df["player_id"] = df["player_id"].astype(int)
     df["numero"]    = df["numero"].astype(int)
     df = df.drop_duplicates(subset=["player_id"]).sort_values("numero")
@@ -305,18 +258,15 @@ def load_fechos() -> pd.DataFrame:
     return df
 
 def save_avaliacoes_bulk(rows_dicts: list[dict]):
-    # Sheets: append em lote
     header = ["timestamp","ano","mes","avaliador","player_id","player_numero","player_nome","player_category","metric_id","score","observacoes"]
     rows = [[rd.get(k,"") for k in header] for rd in rows_dicts]
     ok = False
     if USE_SHEETS:
         ok = append_rows("avaliacoes", rows)
     if not ok:
-        # fallback CSV
         df = _read_csv_flex(AVALIACOES_CSV, columns=header)
         df = pd.concat([df, pd.DataFrame(rows, columns=header)], ignore_index=True)
         df.to_csv(AVALIACOES_CSV, index=False, encoding="utf-8")
-    # clear caches para refletir progresso
     load_avaliacoes.clear()
 
 def save_funcoes_tag(ano:int, mes:int, avaliador:str, player_id:int, funcoes_text:str):
@@ -341,7 +291,6 @@ def foto_path_for(player_id: int, size: int = 60) -> str:
     return f"https://placehold.co/{size}x{size}/cccccc/ffffff?text=%20"
 
 def metrics_for_category(metrics: pd.DataFrame, category: str) -> dict[str, pd.DataFrame]:
-    """Devolve dict com secções: enc_pot, fisicos, mentais, especificos"""
     enc_pot = metrics[metrics["metric_id"].isin(["ENC_PERFIL","POT_FUT"])].copy()
     fis = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="fisicos")].copy()
     men = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="mentais")].copy()
@@ -357,7 +306,6 @@ def trimmed_mean(values: list[float]) -> float | None:
     return sum(vals)/n
 
 def is_completed_for_player(av_df: pd.DataFrame, metrics: pd.DataFrame, avaliador: str, ano:int, mes:int, player_id:int, player_cat:str) -> bool:
-    # nº obrigatórias que se aplicam ao jogador
     sec = metrics_for_category(metrics, player_cat)
     req = pd.concat([
         sec["enc_pot"][sec["enc_pot"]["obrigatorio"]],
@@ -366,8 +314,7 @@ def is_completed_for_player(av_df: pd.DataFrame, metrics: pd.DataFrame, avaliado
         sec["especificos"][sec["especificos"]["obrigatorio"]],
     ], ignore_index=True)
     needed = set(req["metric_id"].tolist())
-
-    if av_df.empty or needed == set():
+    if av_df.empty or not needed:
         return False
     df = av_df
     try:
@@ -392,12 +339,13 @@ if "session_completed" not in st.session_state:
     st.session_state["session_completed"]=set()
 
 # =========================
-# Sidebar — Branding, período, perfil, lista
+# Sidebar — Branding (centrado) + período + perfil + lista
 # =========================
 with st.sidebar:
-    st.markdown("<div class='sidebar-brand' style='margin-top:-10px;'>", unsafe_allow_html=True)
-    logo = "assets/logo.png"
-    st.image(logo if os.path.exists(logo) else "https://placehold.co/140x140?text=Logo", width=140, clamp=True)
+    # Branding
+    st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
+    logo_path = "assets/logo.png"
+    st.image(logo_path if os.path.exists(logo_path) else "https://placehold.co/160x160?text=Logo", width=160, clamp=True)
     st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -491,6 +439,13 @@ with col1:
     st.markdown("### Formulário de Avaliação")
 
     # Obter métricas aplicáveis
+    def metrics_for_category(metrics: pd.DataFrame, category: str) -> dict[str, pd.DataFrame]:
+        enc_pot = metrics[metrics["metric_id"].isin(["ENC_PERFIL","POT_FUT"])].copy()
+        fis = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="fisicos")].copy()
+        men = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="mentais")].copy()
+        esp = metrics[(metrics["scope"]=="especifico") & (metrics["group"]=="categoria") & (metrics["category"]==category)].copy()
+        return {"enc_pot": enc_pot, "fisicos": fis, "mentais": men, "especificos": esp}
+
     secs = metrics_for_category(metrics, sel_cat)
 
     # Radio sem pré-seleção (usa “—”)
@@ -511,7 +466,7 @@ with col1:
 
     # Transversais Físicos
     if not secs["fisicos"].empty:
-        st.markdown("##### Parâmetros Físicos")
+        st.markdown("##### Parâmetros Físicos (Transversais)")
         for _, m in secs["fisicos"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
             val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
@@ -519,7 +474,7 @@ with col1:
 
     # Transversais Mentais
     if not secs["mentais"].empty:
-        st.markdown("##### Parâmetros Mentais")
+        st.markdown("##### Parâmetros Mentais (Transversais)")
         for _, m in secs["mentais"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
             val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
@@ -574,18 +529,17 @@ with col1:
     if not can_submit:
         st.info("⚠️ Responda todas as métricas obrigatórias (1–4) antes de submeter.")
 
-    # Estado do mês + Submeter mês (por avaliador)
+    # Estado do mês
     aval_all = load_avaliacoes()
     completos = [int(r["player_id"]) for _, r in players.iterrows()
                  if is_completed_for_player(aval_all, metrics, perfil, ano, mes, int(r["player_id"]), str(r["category"]).upper())]
     st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
 
-# ---- COL2: Instruções + Painel Admin com 3 radares
+# ---- COL2: Instruções + Painel Admin (Radares)
 with col2:
     st.markdown("#### Instruções")
     st.markdown("""
     <ol style="line-height:1.7; font-size:.95rem;">
-      <li>Escolha o seu <strong>nome</strong> como Perfil em <strong>Utilizador</strong>.</li>  
       <li>Escolha o <strong>jogador</strong> na barra lateral.</li>
       <li>Preencha todos os <strong>parâmetros obrigatórios</strong> (1–4).</li>
       <li>Clique <strong>Submeter avaliação</strong> — a gravação é 1 linha por métrica.</li>
@@ -599,7 +553,6 @@ with col2:
         st.markdown("---")
         st.markdown("#### Painel do Administrador — Radar do Jogador Selecionado")
 
-        # Filtrar avaliações do jogador selecionado no período
         df = load_avaliacoes()
         if not df.empty:
             try:
@@ -615,27 +568,26 @@ with col2:
         if d.empty:
             st.info("Ainda não há avaliações para este jogador neste mês.")
         else:
-            # agregar por metric_id com regra anti-viés
             d["score"] = pd.to_numeric(d["score"], errors="coerce")
             agg = (d.groupby("metric_id")["score"]
-                     .apply(lambda s: trimmed_mean(s.tolist()))
+                     .apply(lambda s: (lambda vals: (sum(vals)-min(vals)-max(vals))/(len(vals)-2) if len(vals)>=3 else (sum(vals)/len(vals)))([float(x) for x in s.dropna().tolist()]))
                      .reset_index().rename(columns={"score":"tm"}))
 
-            # mapear label e grupo a partir do dicionário 'metrics'
             md = metrics[["metric_id","label","group","category"]].drop_duplicates()
             merged = agg.merge(md, on="metric_id", how="left")
 
-            def radar_for(group_name: str, title: str):
-                dsub = merged[merged["group"]==group_name].dropna(subset=["tm"])
-                if dsub.empty:
+            def radar_plot(df_sub: pd.DataFrame, title: str):
+                if df_sub.empty:
                     st.info(f"Sem dados para o radar: {title}")
                     return
-                # ordena por label para estabilidade
-                dsub = dsub.sort_values("label")
+                df_sub = df_sub.dropna(subset=["tm"]).sort_values("label")
+                if df_sub.empty:
+                    st.info(f"Sem dados para o radar: {title}")
+                    return
                 fig = go.Figure()
                 fig.add_trace(go.Scatterpolar(
-                    r=dsub["tm"].tolist(),
-                    theta=dsub["label"].tolist(),
+                    r=df_sub["tm"].tolist(),
+                    theta=df_sub["label"].tolist(),
                     fill='toself',
                     name=title
                 ))
@@ -647,28 +599,9 @@ with col2:
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
-            radar_for("fisicos", "Radar Físico")
-            radar_for("mentais", "Radar Mental")
-            # específicos apenas da categoria do jogador
-            merged_pos = merged[(merged["group"]=="categoria") & (merged["category"]==sel_cat)]
-            if merged_pos.empty:
-                st.info("Sem dados para o radar Específico da Posição.")
-            else:
-                dpos = merged_pos.dropna(subset=["tm"]).sort_values("label")
-                fig = go.Figure()
-                fig.add_trace(go.Scatterpolar(
-                    r=dpos["tm"].tolist(),
-                    theta=dpos["label"].tolist(),
-                    fill='toself',
-                    name="Posição"
-                ))
-                fig.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=[1,4])),
-                    showlegend=False,
-                    margin=dict(l=20,r=20,t=30,b=20),
-                    title=f"Radar Específico ({sel_cat})"
-                )
-                st.plotly_chart(fig, use_container_width=True)
+            radar_plot(merged[merged["group"]=="fisicos"], "Radar Físico")
+            radar_plot(merged[merged["group"]=="mentais"], "Radar Mental")
+            radar_plot(merged[(merged["group"]=="categoria") & (merged["category"]==sel_cat)], f"Radar Específico ({sel_cat})")
 
     st.markdown("---")
-    st.caption("© Leixões SC — Avaliação de Plantel")
+    st.caption("© Leixões SC")
