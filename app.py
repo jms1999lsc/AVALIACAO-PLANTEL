@@ -50,7 +50,7 @@ section[data-testid="stSidebar"] img {{
 /* bloco do branding */
 .sidebar-brand {{
   display:flex; flex-direction:column; align-items:center; text-align:center;
-  margin-top:-6px;    /* puxa ligeiramente para cima (ajusta se precisares) */
+  margin-top:12px;    /* puxa ligeiramente para cima (ajusta se precisares) */
   margin-bottom:12px;
 }}
 .sidebar-brand .brand-title {{
