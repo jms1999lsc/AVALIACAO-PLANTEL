@@ -29,8 +29,8 @@ st.markdown(f"""
 <style>
 /* --- Sidebar base --- */
 [data-testid="stSidebar"] {{
-  min-width: 220px !important;
-  max-width: 220px !important;
+  min-width: 315px !important;
+  max-width: 315px !important;
   background-color: #f3f3f3;
   padding-left: 0.6rem;
   padding-right: 0.6rem;
