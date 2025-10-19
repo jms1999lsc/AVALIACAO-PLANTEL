@@ -23,88 +23,129 @@ st.set_page_config(
 )
 
 # =========================
-# CSS
+# CSS — Sidebar e Branding Leixões SC
 # =========================
 st.markdown(f"""
 <style>
-/* Sidebar compacta + remover espaço topo */
+/* --- Sidebar base --- */
 [data-testid="stSidebar"] {{
-  min-width: 315px !important;
-  max-width: 315px !important;
-  background:#f3f3f3;
-  padding-left:.6rem; padding-right:.6rem;
+  min-width: 220px !important;
+  max-width: 220px !important;
+  background-color: #f3f3f3;
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
 }}
-section[data-testid="stSidebar"] div[role="document"] {{ padding-top: 0 !important; }}
-
-# === Sidebar: logo e título centrados ===
-st.markdown(f"""
-<style>
-/* remove o espaço morto no topo da sidebar */
+/* Remove espaço morto no topo da sidebar */
 section[data-testid="stSidebar"] div[role="document"] {{
   padding-top: 0 !important;
 }}
-/* força centralização de qualquer imagem na sidebar */
+/* Centralizar logo */
 section[data-testid="stSidebar"] img {{
-  display:block; margin:0 auto;
+  display: block;
+  margin: 0 auto;
 }}
-/* bloco do branding */
+/* Branding centrado */
 .sidebar-brand {{
-  display:flex; flex-direction:column; align-items:center; text-align:center;
-  margin-top:-12px;    /* puxa ligeiramente para cima (ajusta se precisares) */
-  margin-bottom:12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-top: -20px;      /* ajusta se quiseres mais acima/abaixo */
+  margin-bottom: 12px;
 }}
 .sidebar-brand .brand-title {{
-  color:{PRIMARY};    /* usa a tua variável cor Leixões */
-  font-weight:800;    /* bold */
-  font-size:18px;
-  margin-top:6px;
+  color: {PRIMARY};        /* vermelho Leixões */
+  font-weight: 800;        /* bold */
+  font-size: 16px;
+  margin-top: 6px;
+  text-align: center;
 }}
-</style>
-""", unsafe_allow_html=True)
-
-# --- Sidebar: Branding centrado ---
-st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
-
-logo_path = "assets/logo.png"  # coloca aqui o caminho do teu emblema
-if os.path.exists(logo_path):
-    st.image(logo_path, width=140, clamp=True)   # ajusta o tamanho se quiseres (ex.: 130–160)
-else:
-    st.image("https://placehold.co/140x140?text=Logo", width=140)
-
-st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-/* Lista jogadores (60px alinhado) */
-.player-item {{ margin-bottom:10px; }}
-.player-row-fixed {{ height:60px; }}
-.player-row-fixed [data-testid="column"]{{ display:flex; align-items:center; gap:8px; }}
-.player-row-fixed .img-wrap{{ width:60px; height:60px; display:flex; align-items:center; justify-content:center; }}
-.player-row-fixed .img-wrap [data-testid="stImage"]{{ margin:0 !important; padding:0 !important; }}
-.player-row-fixed .img-wrap img{{ width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; display:block; }}
-.player-row-fixed .btn-wrap .stButton{{ width:100%; margin:0 !important; }}
-.player-row-fixed .btn-wrap .stButton > button{{
-  width:100% !important; height:60px !important; display:flex; align-items:center; justify-content:flex-start;
-  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
-  padding:0 .60rem !important; font-size:.96rem !important; margin:0 !important;
+/* Ajuste para botões de jogador */
+.player-item {{
+  margin-bottom: 10px;
 }}
-.status-dot{{ width:12px; height:12px; border-radius:50%; display:inline-block; }}
-.status-done{{ background:{GREEN}; }}
-.status-pending{{ background:#cfcfcf; border:1px solid #bdbdbd; }}
-
-/* Títulos / cores */
-h1,h2,h3,h4 {{ color:{BLACK}; }}
+.player-row-fixed {{
+  height: 60px;
+}}
+.player-row-fixed [data-testid="column"] {{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}}
+.player-row-fixed .img-wrap {{
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}}
+.player-row-fixed .img-wrap [data-testid="stImage"] {{
+  margin: 0 !important;
+  padding: 0 !important;
+}}
+.player-row-fixed .img-wrap img {{
+  width: 60px !important;
+  height: 60px !important;
+  object-fit: cover;
+  border-radius: 10px;
+  display: block;
+}}
+.player-row-fixed .btn-wrap .stButton {{
+  width: 100%;
+  margin: 0 !important;
+}}
+.player-row-fixed .btn-wrap .stButton > button {{
+  width: 100% !important;
+  height: 60px !important;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  padding: 0 .60rem !important;
+  font-size: .96rem !important;
+  margin: 0 !important;
+}}
+.status-dot {{
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}}
+.status-done {{
+  background: #2e7d32;
+}}
+.status-pending {{
+  background: #cfcfcf;
+  border: 1px solid #bdbdbd;
+}}
+/* Títulos gerais */
+h1, h2, h3, h4 {{
+  color: #111111;
+}}
 .stButton > button {{
-  background-color:{PRIMARY} !important; color:#fff !important; border:none !important;
-  border-radius:8px !important; padding:.55rem .9rem !important; font-weight:700 !important;
+  background-color: {PRIMARY} !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: .55rem .9rem !important;
+  font-weight: 700 !important;
 }}
-.stButton > button:disabled {{ opacity:.45 !important; }}
-[data-testid="stProgressBar"] > div > div {{ background:{PRIMARY} !important; }}
-
-/* Hero do jogador */
-.player-hero-title {{ text-align:center; font-weight:700; margin:8px 0 10px 0; }}
+.stButton > button:disabled {{
+  opacity: .45 !important;
+}}
+[data-testid="stProgressBar"] > div > div {{
+  background: {PRIMARY} !important;
+}}
+.player-hero-title {{
+  text-align: center;
+  font-weight: 700;
+  margin: 8px 0 10px 0;
+}}
 </style>
 """, unsafe_allow_html=True)
+
 
 # =========================
 # Paths fallback CSV
