@@ -410,11 +410,11 @@ if "session_completed" not in st.session_state:
 # =========================
 with st.sidebar:
     # Branding
-    st.markdown("<div class='sidebar-brand'>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-logo'>", unsafe_allow_html=True)
     logo_path = "assets/logo.png"
-    st.image(logo_path if os.path.exists(logo_path) else "https://placehold.co/160x160?text=Logo", width=160, clamp=True)
-    st.markdown("<div class='brand-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
+    st.image(logo_path if os.path.exists(logo_path) else "https://placehold.co/160x160?text=Logo", clamp=True)
     st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
 
     # Período
     today = datetime.today()
@@ -499,7 +499,13 @@ with col1:
     st.markdown("#### Jogador selecionado")
     _, mid, _ = st.columns([1,2,1])
     with mid:
-        st.markdown(f"<div class='player-hero-title'><span class='badge'>#{int(sel['numero'])}</span> {sel['nome']}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='player-hero-title'>"
+            f"<span class='player-num'>#{int(sel['numero'])}</span>"
+            f"<span class='player-name'>{sel['nome']}</span>"
+            f"</div>",
+            unsafe_allow_html=True
+)
         st.image(foto_path_for(int(sel["player_id"]), 220), width=220, clamp=True)
 
     st.markdown("### Formulário de Avaliação")
