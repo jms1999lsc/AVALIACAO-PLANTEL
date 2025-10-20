@@ -67,7 +67,7 @@ div.block-container {
 .sidebar-logo img {
   display: block;
   margin: 0 auto !important;
-  width: 140px;                  /* tamanho do emblema */
+  width: 130px;                  /* tamanho do emblema */
   height: auto;
 }
 
