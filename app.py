@@ -45,85 +45,87 @@ _boot_session()
 # =========================
 # CSS — Sidebar 315px + Branding + UI
 # =========================
-st.markdown(f"""
+st.markdown("""
 <style>
-/* Sidebar com largura fixa */
-[data-testid="stSidebar"] {{
-  min-width: 315px !important;
-  max-width: 315px !important;
-  background: #f3f3f3;
-  padding-left: .8rem;
-  padding-right: .8rem;
-}}
+/* menos “ar” no topo/baixo da página */
+div.block-container { padding-top: .6rem; padding-bottom: .4rem; }
 
-/* Bloco do emblema no TOPO da sidebar — centrado no próprio bloco */
-.sidebar-top {{
-  height: 230px;                    /* ajusta aqui se quiseres mais/menos alto */
+/* tabs mais juntinhas */
+.stTabs [role="tablist"] { margin-bottom: .25rem; }
+
+/* métricas (KPIs) com menos altura */
+.css-1xarl3l, .stMetric { padding: .25rem .5rem; }
+
+/* ------------- SIDEBAR ------------- */
+
+/* Sidebar mais compacta e colada ao topo */
+section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
+  padding-top: 0 !important;
+}
+
+/* Largura consistente da sidebar (ajusta a gosto) */
+[data-testid="stSidebar"][aria-expanded="true"]{
+  min-width: 315px;    /* muda para 315px se preferires */
+  max-width: 315px;
+}
+
+/* Wrapper do logótipo — verdadeiro centro vertical/horizontal */
+.sidebar-logo{
+  height: 210px;                 /* ajusta a altura do “bloco do logo” */
   display: flex;
-  flex-direction: column;
-  align-items: center;              /* centro horizontal */
-  justify-content: center;          /* centro vertical */
+  align-items: center;           /* centro vertical */
+  justify-content: center;       /* centro horizontal */
   text-align: center;
-  margin-top: 0;
-  margin-bottom: 10px;
-}}
-.sidebar-top img {{
-  width: 160px;                     /* tamanho do emblema */
+  margin: 0 0 6px 0;
+}
+
+/* O container que o Streamlit cria para imagens não adiciona margens aqui */
+.sidebar-logo [data-testid="stImage"]{ margin: 0 !important; padding: 0 !important; }
+/* E a própria imagem fica mesmo centrada */
+.sidebar-logo img{
   display: block;
   margin: 0 auto !important;
-}}
-.sidebar-top .brand-title {{
-  color: #d22222;                   /* vermelho Leixões */
+  width: 160px;                  /* tamanho do emblema */
+  height: auto;
+}
+
+/* Título em vermelho Leixões, centrado e bold */
+.sidebar-title{
+  color: #d22222;
   font-weight: 800;
   font-size: 18px;
   line-height: 1.25;
-  margin-top: 8px;
-}}
+  text-align: center;
+  margin: 8px 0 12px 0;
+}
 
-/* Lista de jogadores (mantém o layout afinado) */
-.player-item {{ margin-bottom: 10px; }}
-.player-row-fixed {{ height: 60px; }}
-.player-row-fixed [data-testid="column"] {{
-  display: flex; align-items: center; gap: 10px;
-}}
-.player-row-fixed .img-wrap {{
-  width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;
-}}
-.player-row-fixed .img-wrap [data-testid="stImage"] {{ margin:0 !important; padding:0 !important; }}
-.player-row-fixed .img-wrap img {{
-  width: 60px !important; height: 60px !important; object-fit: cover; border-radius: 10px;
-}}
-.player-row-fixed .btn-wrap .stButton {{ width: 100%; margin: 0 !important; }}
-.player-row-fixed .btn-wrap .stButton > button {{
-  width: 100% !important; height: 60px !important;
-  display: flex; align-items: center; justify-content: flex-start;
-  white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
-  padding: 0 .70rem !important; font-size: 1.00rem !important; margin: 0 !important;
-}}
-.status-dot {{ width: 12px; height: 12px; border-radius: 50%; display: inline-block; }}
-.status-done {{ background: #2e7d32; }}
-.status-pending {{ background: #cfcfcf; border:1px solid #bdbdbd; }}
+/* Expanders mais “magros” */
+div[role="button"][data-baseweb="accordion"]{
+  padding: 2px 8px !important;
+}
+div[data-testid="stExpander"] div[role="button"] p{
+  margin: 4px 0 !important;
+}
 
-/* Botões / progress bar */
-.stButton > button {{
-  background: #d22222 !important; color: #fff !important;
-  border: none !important; border-radius: 8px !important;
-  padding: .55rem .9rem !important; font-weight: 700 !important;
-}}
-.stButton > button:disabled {{ opacity: .45 !important; }}
-[data-testid="stProgressBar"] > div > div {{ background: #d22222 !important; }}
+/* Linha separadora da sidebar */
+section[data-testid="stSidebar"] hr{
+  border: none;
+  border-top: 1px solid #e7e9ee;
+  margin: 14px 0;
+}
 
 /* Título do jogador (nº + nome) — garantir BOLD */
-.player-hero-title {{ text-align: center; margin: 8px 0 10px 0; }}
+.player-hero-title { text-align: center; margin: 8px 0 10px 0; }
 .player-hero-title .player-num,
-.player-hero-title .player-name {{
-  font-weight: 800 !important;      /* força o bold */
+.player-hero-title .player-name {
+  font-weight: 800 !important;
   color: #111111;
   font-size: 20px;
-}}
-.player-hero-title .player-num {{ margin-right: 6px; }}
+}
+.player-hero-title .player-num { margin-right: 6px; }
 </style>
 """, unsafe_allow_html=True)
+
 
 # ==========================
 # GOOGLE SHEETS CONFIG + HELPERS
