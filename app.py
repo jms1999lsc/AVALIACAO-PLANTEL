@@ -23,7 +23,7 @@ GREEN   = "#2e7d32"
 # Página
 st.set_page_config(
     page_title="Leixões SC — Avaliação de Plantel",
-    page_icon="assets/logo_mini.png" if os.path.exists("assets/logo_mini.png") else "⚽",
+    page_icon="assets/logo.png" if os.path.exists("assets/logo.png") else "⚽",
     layout="wide"
 )
 
