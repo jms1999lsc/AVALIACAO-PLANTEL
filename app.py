@@ -62,12 +62,6 @@ div.block-container {
   padding-right: .8rem;
 }
 
-/* Retira completamente o espaço acima do logo */
-section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
-  padding-top: 0 !important;
-  margin-top: 0 !important;
-}
-
 /* Bloco do logótipo — agora mesmo colado ao topo */
 .sidebar-logo {
   height: 150px;                 /* altura do “quadro” do logo */
