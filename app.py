@@ -1,4 +1,5 @@
-# app.py — Leixões SC — Avaliação de Plantel (métricas dinâmicas + Sheets SoT)
+# app.py — Leixões SC — Avaliação de Plantel (Sheets SoT + métricas dinâmicas + Funções antigo)
+
 import os
 from datetime import datetime
 
@@ -11,15 +12,15 @@ import plotly.graph_objects as go
 # CONFIGURAÇÕES GERAIS DE AMBIENTE
 # ====================================
 
-# Fonte principal de dados (True = Google Sheets, False = CSV local)
+# Fonte principal: Google Sheets (True) | CSV local (False)
 USE_SHEETS = True
 
-# Cores de tema
+# Cores
 PRIMARY = "#d22222"  # vermelho Leixões
 BLACK   = "#111111"
 GREEN   = "#2e7d32"
 
-# Configurações da página
+# Página
 st.set_page_config(
     page_title="Leixões SC — Avaliação de Plantel",
     page_icon="assets/logo_mini.png" if os.path.exists("assets/logo_mini.png") else "⚽",
@@ -27,7 +28,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS — Sidebar (315px) + Branding Leixões SC + UI
+# CSS — Sidebar 315px + Branding + UI
 # =========================
 st.markdown(f"""
 <style>
@@ -39,74 +40,48 @@ st.markdown(f"""
   padding-left: 0.8rem;
   padding-right: 0.8rem;
 }}
-/* Remove espaço morto no topo da sidebar */
-section[data-testid="stSidebar"] div[role="document"] {{
-  padding-top: 0 !important;
-}}
-/* Centralizar imagens da sidebar */
-section[data-testid="stSidebar"] img {{
-  display: block;
-  margin: 0 auto;
-}}
-/* Branding centrado */
+/* remove espaço topo */
+section[data-testid="stSidebar"] div[role="document"] {{ padding-top: 0 !important; }}
+/* centralizar imagens */
+section[data-testid="stSidebar"] img {{ display:block; margin:0 auto; }}
+
+/* Branding */
 .sidebar-brand {{
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  margin-top: -14px;        /* puxa o bloco para cima (ajusta se quiseres) */
-  margin-bottom: 14px;
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  margin-top:-14px; margin-bottom:14px;
 }}
 .sidebar-brand .brand-title {{
-  color: {PRIMARY};         /* vermelho Leixões */
-  font-weight: 800;         /* bold */
-  font-size: 18px;
-  line-height: 1.2;
-  margin-top: 6px;
-  text-align: center;
+  color:{PRIMARY}; font-weight:800; font-size:18px; line-height:1.2; margin-top:6px; text-align:center;
 }}
 
-/* Lista de jogadores (60px altura; alinhamento imagem/botão/estado) */
-.player-item {{ margin-bottom: 10px; }}
-.player-row-fixed {{ height: 60px; }}
-.player-row-fixed [data-testid="column"] {{
-  display: flex;
-  align-items: center;
-  gap: 10px;
+/* Lista de jogadores */
+.player-item {{ margin-bottom:10px; }}
+.player-row-fixed {{ height:60px; }}
+.player-row-fixed [data-testid="column"]{{ display:flex; align-items:center; gap:10px; }}
+.player-row-fixed .img-wrap{{ width:60px; height:60px; display:flex; align-items:center; justify-content:center; }}
+.player-row-fixed .img-wrap [data-testid="stImage"]{{ margin:0 !important; padding:0 !important; }}
+.player-row-fixed .img-wrap img{{ width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; display:block; }}
+.player-row-fixed .btn-wrap .stButton{{ width:100%; margin:0 !important; }}
+.player-row-fixed .btn-wrap .stButton > button{{
+  width:100% !important; height:60px !important; display:flex; align-items:center; justify-content:flex-start;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  padding:0 .70rem !important; font-size:1.00rem !important; margin:0 !important;
 }}
-.player-row-fixed .img-wrap {{
-  width: 60px; height: 60px;
-  display: flex; align-items: center; justify-content: center;
-}}
-.player-row-fixed .img-wrap [data-testid="stImage"] {{
-  margin: 0 !important; padding: 0 !important;
-}}
-.player-row-fixed .img-wrap img {{
-  width: 60px !important; height: 60px !important; object-fit: cover;
-  border-radius: 10px; display: block;
-}}
-.player-row-fixed .btn-wrap .stButton {{ width: 100%; margin: 0 !important; }}
-.player-row-fixed .btn-wrap .stButton > button {{
-  width: 100% !important; height: 60px !important;
-  display: flex; align-items: center; justify-content: flex-start;
-  white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
-  padding: 0 .70rem !important; font-size: 1.00rem !important; margin: 0 !important;
-}}
-.status-dot {{ width: 12px; height: 12px; border-radius: 50%; display: inline-block; }}
-.status-done {{ background: {GREEN}; }}
-.status-pending {{ background: #cfcfcf; border: 1px solid #bdbdbd; }}
+.status-dot{{ width:12px; height:12px; border-radius:50%; display:inline-block; }}
+.status-done{{ background:{GREEN}; }}
+.status-pending{{ background:#cfcfcf; border:1px solid #bdbdbd; }}
 
 /* Títulos / botões / progresso */
-h1,h2,h3,h4 {{ color: {BLACK}; }}
+h1,h2,h3,h4 {{ color:{BLACK}; }}
 .stButton > button {{
-  background-color: {PRIMARY} !important; color: #fff !important; border: none !important;
-  border-radius: 8px !important; padding: .55rem .9rem !important; font-weight: 700 !important;
+  background-color:{PRIMARY} !important; color:#fff !important; border:none !important;
+  border-radius:8px !important; padding:.55rem .9rem !important; font-weight:700 !important;
 }}
-.stButton > button:disabled {{ opacity: .45 !important; }}
-[data-testid="stProgressBar"] > div > div {{ background: {PRIMARY} !important; }}
+.stButton > button:disabled {{ opacity:.45 !important; }}
+[data-testid="stProgressBar"] > div > div {{ background:{PRIMARY} !important; }}
 
 /* Hero do jogador */
-.player-hero-title {{ text-align: center; font-weight: 700; margin: 8px 0 10px 0; }}
+.player-hero-title {{ text-align:center; font-weight:700; margin:8px 0 10px 0; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -368,15 +343,14 @@ def has_funcoes_for(avaliador: str, ano:int, mes:int, player_id:int) -> bool:
             return False
         df.columns = [c.strip().lower() for c in df.columns]
         m = (
-            (df.get("avaliador", "").astype(str) == str(avaliador)) &
-            (df.get("ano", "").astype(str) == str(ano)) &
-            (df.get("mes", "").astype(str) == str(mes)) &
-            (df.get("player_id", "").astype(str) == str(int(player_id)))
+            (df.get("avaliador","").astype(str)==str(avaliador)) &
+            (df.get("ano","").astype(str)==str(ano)) &
+            (df.get("mes","").astype(str)==str(mes)) &
+            (df.get("player_id","").astype(str)==str(int(player_id)))
         )
         return bool(m.any())
     except Exception:
         return False
-
 
 # =========================
 # Carregar dados
@@ -390,7 +364,7 @@ if "session_completed" not in st.session_state:
     st.session_state["session_completed"]=set()
 
 # =========================
-# Sidebar — Branding (centrado) + período + perfil + lista
+# Sidebar — Branding + período + perfil + lista
 # =========================
 with st.sidebar:
     # Branding
@@ -432,7 +406,7 @@ with st.sidebar:
 
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 
-# progresso
+# progresso + seleção
 def completed_for_player(pid:int, pcat:str)->bool:
     in_sheet_metrics = is_completed_for_player(aval_all, metrics, perfil, ano, mes, pid, pcat)
     in_sheet_funcoes = has_funcoes_for(perfil, ano, mes, pid)
@@ -445,12 +419,10 @@ for _, r in players.iterrows():
     if completed_for_player(pid, pcat): completos_ids.append(pid)
 st.sidebar.progress(len(completos_ids)/len(players), text=f"Completos: {len(completos_ids)}/{len(players)}")
 
-# seleção
 if "selecionado_id" not in st.session_state:
     st.session_state["selecionado_id"] = int(players.iloc[0]["player_id"])
 selecionado_id = st.session_state["selecionado_id"]
 
-# lista
 for _, row in players.iterrows():
     pid   = int(row["player_id"])
     foto  = foto_path_for(pid, 60)
@@ -480,97 +452,78 @@ sel_cat = str(sel["category"]).upper()
 # =========================
 col1, col2 = st.columns([1.2, 2.2], gap="large")
 
-# ---- COL1: Jogador + Formulário Dinâmico
+# ---- COL1: Jogador + Formulário
 with col1:
     st.markdown("#### Jogador selecionado")
     _, mid, _ = st.columns([1,2,1])
     with mid:
         st.markdown(f"<div class='player-hero-title'><span class='badge'>#{int(sel['numero'])}</span> {sel['nome']}</div>", unsafe_allow_html=True)
-        st.image(foto_path_for(int(sel['player_id']), 220), width=220, clamp=True)
+        st.image(foto_path_for(int(sel["player_id"]), 220), width=220, clamp=True)
 
     st.markdown("### Formulário de Avaliação")
 
-    # Obter métricas aplicáveis
-    def metrics_for_category(metrics: pd.DataFrame, category: str) -> dict[str, pd.DataFrame]:
-        enc_pot = metrics[metrics["metric_id"].isin(["ENC_PERFIL","POT_FUT"])].copy()
-        fis = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="fisicos")].copy()
-        men = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="mentais")].copy()
-        esp = metrics[(metrics["scope"]=="especifico") & (metrics["group"]=="categoria") & (metrics["category"]==category)].copy()
-        return {"enc_pot": enc_pot, "fisicos": fis, "mentais": men, "especificos": esp}
-
     secs = metrics_for_category(metrics, sel_cat)
 
-    # Radio sem pré-seleção (usa “—”)
     def nota(label: str, key: str):
         opcoes = ["—", 1, 2, 3, 4]
         escolha = st.radio(label, opcoes, horizontal=True, index=0, key=key)
         return None if escolha == "—" else escolha
 
-    respostas = {}  # metric_id -> score
+    respostas = {}
 
-    # Seção Encaixe & Potencial
     if not secs["enc_pot"].empty:
         st.markdown("##### Encaixe & Potencial")
         for _, m in secs["enc_pot"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
-            val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
-            respostas[mid] = val
+            respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-    # Transversais Físicos
     if not secs["fisicos"].empty:
-        st.markdown("##### Parâmetros Físicos")
+        st.markdown("##### Parâmetros Físicos (Transversais)")
         for _, m in secs["fisicos"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
-            val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
-            respostas[mid] = val
+            respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-    # Transversais Mentais
     if not secs["mentais"].empty:
-        st.markdown("##### Parâmetros Mentais")
+        st.markdown("##### Parâmetros Mentais (Transversais)")
         for _, m in secs["mentais"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
-            val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
-            respostas[mid] = val
+            respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-    # Específicos da Categoria
     if not secs["especificos"].empty:
         st.markdown(f"##### Específicos da Posição ({sel_cat})")
         for _, m in secs["especificos"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
-            val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
-            respostas[mid] = val
+            respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-    # ===== Funções (obrigatório, multiselect) =====
-funcoes_options = load_funcoes_catalogo()
+    # ===== Funções (obrigatório, multiselect antigo) =====
+    funcoes_options = load_funcoes_catalogo()
 
-# recuperar seleções anteriores (se existirem) para este jogador/avaliador/mês
-prev_funcoes = []
-try:
-    fun_df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
-    if not fun_df.empty:
-        fun_df.columns = [c.strip().lower() for c in fun_df.columns]
-        mf = (
-            (fun_df.get("ano", "").astype(str) == str(ano)) &
-            (fun_df.get("mes", "").astype(str) == str(mes)) &
-            (fun_df.get("avaliador", "").astype(str) == str(perfil)) &
-            (fun_df.get("player_id", "").astype(str) == str(int(sel["player_id"])))
-        )
-        if mf.any():
-            last = fun_df.loc[mf].iloc[-1]
-            prev_funcoes = [s.strip() for s in str(last.get("funcoes", "")).split(";") if s.strip()]
-except Exception:
-    pass
+    prev_funcoes = []
+    try:
+        fun_df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
+        if not fun_df.empty:
+            fun_df.columns = [c.strip().lower() for c in fun_df.columns]
+            mf = (
+                (fun_df.get("ano", "").astype(str) == str(ano)) &
+                (fun_df.get("mes", "").astype(str) == str(mes)) &
+                (fun_df.get("avaliador", "").astype(str) == str(perfil)) &
+                (fun_df.get("player_id", "").astype(str) == str(int(sel["player_id"])))
+            )
+            if mf.any():
+                last = fun_df.loc[mf].iloc[-1]
+                prev_funcoes = [s.strip() for s in str(last.get("funcoes", "")).split(";") if s.strip()]
+    except Exception:
+        pass
 
-sel_funcoes = st.multiselect(
-    "Funções em que apresenta domínio funcional (obrigatório)",
-    options=funcoes_options,
-    default=prev_funcoes,
-    key=f"fun_{selecionado_id}_{ano}_{mes}_{perfil}"
-)
+    sel_funcoes = st.multiselect(
+        "Funções em que apresenta domínio funcional (obrigatório)",
+        options=funcoes_options,
+        default=prev_funcoes,
+        key=f"fun_{selecionado_id}_{ano}_{mes}_{perfil}"
+    )
 
-obs = st.text_area("Observações")
+    obs = st.text_area("Observações (visível apenas ao Administrador)")
 
-    # Validação: todas obrigatórias respondidas
     obrig = pd.concat([
         secs["enc_pot"][secs["enc_pot"]["obrigatorio"]],
         secs["fisicos"][secs["fisicos"]["obrigatorio"]],
@@ -597,6 +550,8 @@ obs = st.text_area("Observações")
             rows.append(rd)
         if rows:
             save_avaliacoes_bulk(rows)
+
+        # Funções obrigatórias
         if len(sel_funcoes) == 0:
             st.error("Selecione pelo menos uma Função antes de submeter.")
             st.stop()
@@ -614,7 +569,7 @@ obs = st.text_area("Observações")
     # Estado do mês
     aval_all = load_avaliacoes()
     completos = [int(r["player_id"]) for _, r in players.iterrows()
-                 if is_completed_for_player(aval_all, metrics, perfil, ano, mes, int(r["player_id"]), str(r["category"]).upper())]
+                 if completed_for_player(aval_all, metrics, perfil, ano, mes, int(r["player_id"]), str(r["category"]).upper())]
     st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
 
 # ---- COL2: Instruções + Painel Admin (Radares)
@@ -624,6 +579,7 @@ with col2:
     <ol style="line-height:1.7; font-size:.95rem;">
       <li>Escolha o <strong>jogador</strong> na barra lateral.</li>
       <li>Preencha todos os <strong>parâmetros obrigatórios</strong> (1–4).</li>
+      <li>Selecione as <strong>Funções</strong> (pelo menos uma).</li>
       <li>Clique <strong>Submeter avaliação</strong> — a gravação é 1 linha por métrica.</li>
     </ol>
     <p style="font-style: italic; font-size:.9rem;">
@@ -686,4 +642,4 @@ with col2:
             radar_plot(merged[(merged["group"]=="categoria") & (merged["category"]==sel_cat)], f"Radar Específico ({sel_cat})")
 
     st.markdown("---")
-    st.caption("© Leixões SC")
+    st.caption("© Leixões SC — Avaliação de Plantel")
