@@ -93,7 +93,10 @@ section[data-testid="stSidebar"] div[data-testid="stSidebarContent"] > div:first
   width: 130px;   /* 130–150 é a zona segura */
   height: auto;
 }
-
+/* Devolve respiro geral ao topo da área principal */
+div.block-container{
+  padding-top: 1.4rem !important;   /* estava curto – volta a dar espaço */
+}
 /* Dá respiro extra aos grandes títulos gerados pelo Streamlit (h2/h3) */
 main [data-testid="stVerticalBlock"] h2,
 main [data-testid="stVerticalBlock"] h3{
