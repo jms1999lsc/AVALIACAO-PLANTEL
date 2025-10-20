@@ -493,13 +493,13 @@ with col1:
             respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
     if not secs["fisicos"].empty:
-        st.markdown("##### Parâmetros Físicos (Transversais)")
+        st.markdown("##### Parâmetros Físicos")
         for _, m in secs["fisicos"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
             respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
     if not secs["mentais"].empty:
-        st.markdown("##### Parâmetros Mentais (Transversais)")
+        st.markdown("##### Parâmetros Mentais")
         for _, m in secs["mentais"].iterrows():
             mid = m["metric_id"]; lab = m["label"]
             respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
@@ -537,7 +537,7 @@ with col1:
         key=f"fun_{selecionado_id}_{ano}_{mes}_{perfil}"
     )
 
-    obs = st.text_area("Observações (visível apenas ao Administrador)")
+    obs = st.text_area("Observações")
 
     obrig = pd.concat([
         secs["enc_pot"][secs["enc_pot"]["obrigatorio"]],
