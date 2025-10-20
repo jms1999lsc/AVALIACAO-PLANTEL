@@ -47,75 +47,88 @@ _boot_session()
 # =========================
 st.markdown("""
 <style>
-/* menos “ar” no topo/baixo da página */
-div.block-container { padding-top: .6rem; padding-bottom: .4rem; }
+/* ====== LAYOUT GLOBAL (leve) ====== */
+div.block-container {
+  /* podes ajustar se quiseres um pouco menos de “ar” */
+  padding-top: 0.8rem;
+  padding-bottom: 0.6rem;
+}
 
-/* tabs mais juntinhas */
-.stTabs [role="tablist"] { margin-bottom: .25rem; }
+/* ====== SIDEBAR ====== */
 
-/* métricas (KPIs) com menos altura */
-.css-1xarl3l, .stMetric { padding: .25rem .5rem; }
+/* Largura fixa da sidebar */
+[data-testid="stSidebar"]{
+  min-width: 315px !important;
+  max-width: 315px !important;
+  background: #f3f3f3;
+  padding-left: .8rem;
+  padding-right: .8rem;
+}
 
-/* ------------- SIDEBAR ------------- */
-
-/* Sidebar mais compacta e colada ao topo */
+/* Conteúdo da sidebar: volta ao fluxo normal (sem height:100vh, sem margens negativas) */
 section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
-  padding-top: 0 !important;
+  padding-top: 6px !important;   /* ligeiro respiro no topo */
 }
 
-/* Largura consistente da sidebar (ajusta a gosto) */
-[data-testid="stSidebar"][aria-expanded="true"]{
-  min-width: 315px;    /* muda para 315px se preferires */
-  max-width: 315px;
-}
-
-/* Wrapper do logótipo — verdadeiro centro vertical/horizontal */
+/* Bloco do logótipo – centrado e baixo (não ocupa a página toda) */
 .sidebar-logo{
-  height: 210px;                 /* ajusta a altura do “bloco do logo” */
+  height: 160px;                 /* altura do “quadro” do logo */
   display: flex;
   align-items: center;           /* centro vertical */
   justify-content: center;       /* centro horizontal */
   text-align: center;
-  margin: 0 0 6px 0;
+  margin: 0 0 8px 0;             /* sem espaço morto acima */
 }
 
-/* O container que o Streamlit cria para imagens não adiciona margens aqui */
+/* O container de imagem do Streamlit não injeta margens */
 .sidebar-logo [data-testid="stImage"]{ margin: 0 !important; padding: 0 !important; }
-/* E a própria imagem fica mesmo centrada */
+
+/* Emblema dimensionado comedidamente */
 .sidebar-logo img{
   display: block;
   margin: 0 auto !important;
-  width: 160px;                  /* tamanho do emblema */
+  width: 140px;                  /* ajusta aqui (130–160) se quiseres */
   height: auto;
 }
 
-/* Título em vermelho Leixões, centrado e bold */
+/* Título do projeto em vermelho Leixões, centrado e bold */
 .sidebar-title{
   color: #d22222;
   font-weight: 800;
   font-size: 18px;
   line-height: 1.25;
   text-align: center;
-  margin: 8px 0 12px 0;
+  margin: 6px 0 12px 0;
 }
 
-/* Expanders mais “magros” */
-div[role="button"][data-baseweb="accordion"]{
-  padding: 2px 8px !important;
+/* Lista de jogadores: mantemos o layout afinado */
+.player-item { margin-bottom: 10px; }
+.player-row-fixed { height: 60px; }
+.player-row-fixed [data-testid="column"]{ display:flex; align-items:center; gap:10px; }
+.player-row-fixed .img-wrap{ width:60px; height:60px; display:flex; align-items:center; justify-content:center; }
+.player-row-fixed .img-wrap [data-testid="stImage"]{ margin:0 !important; padding:0 !important; }
+.player-row-fixed .img-wrap img{ width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; }
+.player-row-fixed .btn-wrap .stButton{ width:100%; margin:0 !important; }
+.player-row-fixed .btn-wrap .stButton > button{
+  width:100% !important; height:60px !important;
+  display:flex; align-items:center; justify-content:flex-start;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  padding:0 .70rem !important; font-size:1.00rem !important; margin:0 !important;
 }
-div[data-testid="stExpander"] div[role="button"] p{
-  margin: 4px 0 !important;
-}
+.status-dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
+.status-done{ background:#2e7d32; }
+.status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
 
-/* Linha separadora da sidebar */
-section[data-testid="stSidebar"] hr{
-  border: none;
-  border-top: 1px solid #e7e9ee;
-  margin: 14px 0;
+/* Botões e progress bar com vermelho Leixões */
+.stButton > button{
+  background:#d22222 !important; color:#fff !important; border:none !important;
+  border-radius:8px !important; padding:.55rem .9rem !important; font-weight:700 !important;
 }
+.stButton > button:disabled{ opacity:.45 !important; }
+[data-testid="stProgressBar"] > div > div{ background:#d22222 !important; }
 
-/* Título do jogador (nº + nome) — garantir BOLD */
-.player-hero-title { text-align: center; margin: 8px 0 10px 0; }
+/* Título do jogador — garantir BOLD */
+.player-hero-title { text-align:center; margin:8px 0 10px 0; }
 .player-hero-title .player-num,
 .player-hero-title .player-name {
   font-weight: 800 !important;
@@ -125,6 +138,7 @@ section[data-testid="stSidebar"] hr{
 .player-hero-title .player-num { margin-right: 6px; }
 </style>
 """, unsafe_allow_html=True)
+
 
 
 # ==========================
@@ -412,7 +426,7 @@ with st.sidebar:
     # Branding
     st.markdown("<div class='sidebar-logo'>", unsafe_allow_html=True)
     logo_path = "assets/logo.png"
-    st.image(logo_path if os.path.exists(logo_path) else "https://placehold.co/160x160?text=Logo", clamp=True)
+    st.image(logo_path if os.path.exists(logo_path) else "https://placehold.co/140x140?text=Logo", clamp=True)
     st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("<div class='sidebar-title'>Leixões SC — Avaliação de Plantel</div>", unsafe_allow_html=True)
 
