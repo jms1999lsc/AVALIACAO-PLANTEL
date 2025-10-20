@@ -96,6 +96,32 @@ section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
   text-align: center;
   margin: 6px 0 12px 0;
 }
+/* PUXA O LOGO PARA CIMA (remove espaço morto) */
+section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
+  padding-top: 0 !important;   /* sem acolchoamento no topo */
+}
+section[data-testid="stSidebar"] div[data-testid="stSidebarContent"] > div:first-child{
+  margin-top: -18px !important;   /* sobe o bloco do logo ~18px; ajusta -22/-24 se quiseres ainda mais acima */
+}
+
+/* (opcional) tamanho do emblema */
+.sidebar-logo img{
+  width: 140px;   /* 130–150 é a zona segura */
+  height: auto;
+}
+/* Devolve respiro geral ao topo da área principal */
+div.block-container{
+  padding-top: 1.4rem !important;   /* estava curto – volta a dar espaço */
+}
+
+/* Dá respiro extra aos grandes títulos gerados pelo Streamlit (h2/h3) */
+main [data-testid="stVerticalBlock"] h2,
+main [data-testid="stVerticalBlock"] h3{
+  margin-top: 1.2rem !important;    /* espaço antes do título */
+  margin-bottom: .6rem !important;
+  font-weight: 800 !important;       /* reforça destaque */
+  color: #b00000 !important;         /* vermelho Leixões para “secções” */
+}
 
 /* ====== JOGADOR SELECIONADO ====== */
 .player-hero-title { text-align: center; margin: 8px 0 10px 0; }
