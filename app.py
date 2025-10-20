@@ -280,6 +280,40 @@ def save_funcoes_tag(ano:int, mes:int, avaliador:str, player_id:int, funcoes_tex
         df = pd.concat([df, pd.DataFrame(row, columns=header)], ignore_index=True)
         df.to_csv(FUNCOES_CSV, index=False, encoding="utf-8")
 
+# ===== Catálogo de Funções (multiselect obrigatório) =====
+FUNCOES_TAXONOMY_DEFAULT = [
+    "Guarda Redes",
+    "Guarda Redes Construtor",
+    "Lateral Profundo",
+    "Lateral Construtor",
+    "Lateral Defensivo",
+    "Defesa Central Construtor",
+    "Defesa Central Agressivo",
+    "Médio Defensivo Pivot",
+    "Segundo Médio",
+    "Médio Box-to-Box",
+    "Médio Organizador",
+    "10 Organizador",
+    "Segundo Avançado",
+    "Extremo Associativo",
+    "Extremo 1x1",
+    "Extremo de Profundidade",
+    "Ponta de Lança Referência",
+    "Ponta de Lança Móvel",
+]
+
+@st.cache_data(ttl=600)
+def load_funcoes_catalogo() -> list[str]:
+    """Lê a aba opcional 'funcoes_catalogo'. Se não existir, usa a lista default."""
+    if USE_SHEETS:
+        df = read_sheet("funcoes_catalogo")
+        if not df.empty:
+            col = df.columns[0]
+            opts = [str(x).strip() for x in df[col] if str(x).strip()]
+            if opts:
+                return opts
+    return FUNCOES_TAXONOMY_DEFAULT[:]
+
 # =========================
 # Helpers
 # =========================
@@ -326,6 +360,23 @@ def is_completed_for_player(av_df: pd.DataFrame, metrics: pd.DataFrame, avaliado
         return needed.issubset(got)
     except Exception:
         return False
+
+def has_funcoes_for(avaliador: str, ano:int, mes:int, player_id:int) -> bool:
+    try:
+        df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
+        if df.empty:
+            return False
+        df.columns = [c.strip().lower() for c in df.columns]
+        m = (
+            (df.get("avaliador", "").astype(str) == str(avaliador)) &
+            (df.get("ano", "").astype(str) == str(ano)) &
+            (df.get("mes", "").astype(str) == str(mes)) &
+            (df.get("player_id", "").astype(str) == str(int(player_id)))
+        )
+        return bool(m.any())
+    except Exception:
+        return False
+
 
 # =========================
 # Carregar dados
@@ -383,9 +434,10 @@ ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 
 # progresso
 def completed_for_player(pid:int, pcat:str)->bool:
+    in_sheet_metrics = is_completed_for_player(aval_all, metrics, perfil, ano, mes, pid, pcat)
+    in_sheet_funcoes = has_funcoes_for(perfil, ano, mes, pid)
     in_session = (perfil,ano,mes,pid) in st.session_state["session_completed"]
-    in_sheet   = is_completed_for_player(aval_all, metrics, perfil, ano, mes, pid, pcat)
-    return in_session or in_sheet
+    return (in_sheet_metrics and in_sheet_funcoes) or in_session
 
 completos_ids = []
 for _, r in players.iterrows():
@@ -488,8 +540,33 @@ with col1:
             val = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
             respostas[mid] = val
 
-    # Tagging de Funções (Opção B)
-    funcoes_text = st.text_input("Funções (tagging opcional — separa por ';')", value="")
+    # ===== Funções (obrigatório, multiselect) =====
+funcoes_options = load_funcoes_catalogo()
+
+# recuperar seleções anteriores (se existirem) para este jogador/avaliador/mês
+prev_funcoes = []
+try:
+    fun_df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
+    if not fun_df.empty:
+        fun_df.columns = [c.strip().lower() for c in fun_df.columns]
+        mf = (
+            (fun_df.get("ano", "").astype(str) == str(ano)) &
+            (fun_df.get("mes", "").astype(str) == str(mes)) &
+            (fun_df.get("avaliador", "").astype(str) == str(perfil)) &
+            (fun_df.get("player_id", "").astype(str) == str(int(sel["player_id"])))
+        )
+        if mf.any():
+            last = fun_df.loc[mf].iloc[-1]
+            prev_funcoes = [s.strip() for s in str(last.get("funcoes", "")).split(";") if s.strip()]
+except Exception:
+    pass
+
+sel_funcoes = st.multiselect(
+    "Funções em que apresenta domínio funcional (obrigatório)",
+    options=funcoes_options,
+    default=prev_funcoes,
+    key=f"fun_{selecionado_id}_{ano}_{mes}_{perfil}"
+)
 
     obs = st.text_area("Observações")
 
@@ -520,8 +597,13 @@ with col1:
             rows.append(rd)
         if rows:
             save_avaliacoes_bulk(rows)
-        if funcoes_text.strip():
-            save_funcoes_tag(ano, mes, perfil, int(sel["player_id"]), funcoes_text.strip())
+        if len(sel_funcoes) == 0:
+            st.error("Selecione pelo menos uma Função antes de submeter.")
+            st.stop()
+        else:
+            funcoes_str = "; ".join(sel_funcoes)
+            save_funcoes_tag(ano, mes, perfil, int(sel["player_id"]), funcoes_str)
+
         st.session_state["session_completed"].add((perfil,ano,mes,int(sel["player_id"])))
         st.success("✅ Avaliação registada.")
         st.rerun()
