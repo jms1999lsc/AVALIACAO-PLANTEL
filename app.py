@@ -723,4 +723,4 @@ with col2:
             radar_plot(merged[(merged["group"]=="categoria") & (merged["category"]==sel_cat)], f"Radar Específico ({sel_cat})")
 
     st.markdown("---")
-    st.caption("© Leixões SC — Avaliação de Plantel")
+    st.caption("© Leixões SC")
