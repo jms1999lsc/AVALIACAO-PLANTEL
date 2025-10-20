@@ -568,7 +568,7 @@ sel_funcoes = st.multiselect(
     key=f"fun_{selecionado_id}_{ano}_{mes}_{perfil}"
 )
 
-    obs = st.text_area("Observações")
+obs = st.text_area("Observações")
 
     # Validação: todas obrigatórias respondidas
     obrig = pd.concat([
