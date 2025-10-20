@@ -90,7 +90,7 @@ section[data-testid="stSidebar"] div[data-testid="stSidebarContent"] > div:first
 
 /* (opcional) tamanho do emblema */
 .sidebar-logo img{
-  width: 140px;   /* 130–150 é a zona segura */
+  width: 130px;   /* 130–150 é a zona segura */
   height: auto;
 }
 /* Devolve respiro geral ao topo da área principal */
