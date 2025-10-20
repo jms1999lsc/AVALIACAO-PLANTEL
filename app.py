@@ -55,18 +55,35 @@ st.markdown(f"""
   padding-left: 0.8rem;
   padding-right: 0.8rem;
 }}
-/* remove espaço topo */
-section[data-testid="stSidebar"] div[role="document"] {{ padding-top: 0 !important; }}
-/* centralizar imagens */
-section[data-testid="stSidebar"] img {{ display:block; margin:0 auto; }}
 
-/* Branding */
+/* Remove espaço morto acima do logótipo */
+section[data-testid="stSidebar"] div[role="document"] {{
+  padding-top: 0 !important;
+  margin-top: -10px !important;
+}}
+
+/* Centralizar o emblema */
+section[data-testid="stSidebar"] img {{
+  display: block;
+  margin: 0 auto !important;
+}}
+
+/* Branding principal (título) */
 .sidebar-brand {{
-  display:flex; flex-direction:column; align-items:center; text-align:center;
-  margin-top:-14px; margin-bottom:14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-top: -8px;
+  margin-bottom: 12px;
 }}
 .sidebar-brand .brand-title {{
-  color:{PRIMARY}; font-weight:800; font-size:18px; line-height:1.2; margin-top:6px; text-align:center;
+  color: #d22222; /* vermelho Leixões */
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1.2;
+  margin-top: 8px;
+  text-align: center;
 }}
 
 /* Lista de jogadores */
@@ -83,17 +100,21 @@ section[data-testid="stSidebar"] img {{ display:block; margin:0 auto; }}
   padding:0 .70rem !important; font-size:1.00rem !important; margin:0 !important;
 }}
 .status-dot{{ width:12px; height:12px; border-radius:50%; display:inline-block; }}
-.status-done{{ background:{GREEN}; }}
+.status-done{{ background:#2e7d32; }}
 .status-pending{{ background:#cfcfcf; border:1px solid #bdbdbd; }}
 
 /* Títulos / botões / progresso */
-h1,h2,h3,h4 {{ color:{BLACK}; }}
+h1,h2,h3,h4 {{ color:#111111; }}
 .stButton > button {{
-  background-color:{PRIMARY} !important; color:#fff !important; border:none !important;
-  border-radius:8px !important; padding:.55rem .9rem !important; font-weight:700 !important;
+  background-color:#d22222 !important;
+  color:#fff !important;
+  border:none !important;
+  border-radius:8px !important;
+  padding:.55rem .9rem !important;
+  font-weight:700 !important;
 }}
 .stButton > button:disabled {{ opacity:.45 !important; }}
-[data-testid="stProgressBar"] > div > div {{ background:{PRIMARY} !important; }}
+[data-testid="stProgressBar"] > div > div {{ background:#d22222 !important; }}
 
 /* Hero do jogador */
 .player-hero-title {{ text-align:center; font-weight:700; margin:8px 0 10px 0; }}
