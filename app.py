@@ -47,64 +47,64 @@ _boot_session()
 # =========================
 st.markdown(f"""
 <style>
-/* Sidebar fixa 315px */
+/* Sidebar com largura fixa 315px */
 [data-testid="stSidebar"] {{
   min-width: 315px !important;
   max-width: 315px !important;
   background-color: #f3f3f3;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
   padding-left: 0.8rem;
   padding-right: 0.8rem;
 }}
 
-/* Container principal da sidebar */
+/* Remove espaço morto acima do logótipo */
 section[data-testid="stSidebar"] div[role="document"] {{
-  display: flex;
-  flex-direction: column;
-  justify-content: center;  /* centra verticalmente */
-  align-items: center;      /* centra horizontalmente */
-  height: 100vh;            /* ocupa a altura total da viewport */
   padding-top: 0 !important;
-  margin-top: 0 !important;
+  margin-top: -10px !important;
 }}
 
-/* Branding (símbolo + texto) */
+/* Centralizar o emblema */
+section[data-testid="stSidebar"] img {{
+  display: block;
+  margin: 0 auto !important;
+}}
+
+/* Branding principal (título) */
 .sidebar-brand {{
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   text-align: center;
-  margin-top: -25px;
-  margin-bottom: 25px;
-}}
-.sidebar-brand img {{
-  display: block;
-  margin: 0 auto !important;
-  width: 160px;
+  margin-top: -8px;
+  margin-bottom: 12px;
 }}
 .sidebar-brand .brand-title {{
   color: #d22222; /* vermelho Leixões */
   font-weight: 800;
   font-size: 18px;
-  line-height: 1.3;
-  margin-top: 10px;
+  line-height: 1.2;
+  margin-top: 8px;
   text-align: center;
 }}
 
-/* Restante conteúdo da sidebar */
-section[data-testid="stSidebar"] > div > div:nth-child(2) {{
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  margin-top: 20px;
+/* Lista de jogadores */
+.player-item {{ margin-bottom:10px; }}
+.player-row-fixed {{ height:60px; }}
+.player-row-fixed [data-testid="column"]{{ display:flex; align-items:center; gap:10px; }}
+.player-row-fixed .img-wrap{{ width:60px; height:60px; display:flex; align-items:center; justify-content:center; }}
+.player-row-fixed .img-wrap [data-testid="stImage"]{{ margin:0 !important; padding:0 !important; }}
+.player-row-fixed .img-wrap img{{ width:60px !important; height:60px !important; object-fit:cover; border-radius:10px; display:block; }}
+.player-row-fixed .btn-wrap .stButton{{ width:100%; margin:0 !important; }}
+.player-row-fixed .btn-wrap .stButton > button{{
+  width:100% !important; height:60px !important; display:flex; align-items:center; justify-content:flex-start;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  padding:0 .70rem !important; font-size:1.00rem !important; margin:0 !important;
 }}
+.status-dot{{ width:12px; height:12px; border-radius:50%; display:inline-block; }}
+.status-done{{ background:#2e7d32; }}
+.status-pending{{ background:#cfcfcf; border:1px solid #bdbdbd; }}
 
-/* Ajuste global dos widgets */
+/* Títulos / botões / progresso */
+h1,h2,h3,h4 {{ color:#111111; }}
 .stButton > button {{
   background-color:#d22222 !important;
   color:#fff !important;
@@ -113,9 +113,11 @@ section[data-testid="stSidebar"] > div > div:nth-child(2) {{
   padding:.55rem .9rem !important;
   font-weight:700 !important;
 }}
-[data-testid="stProgressBar"] > div > div {{
-  background:#d22222 !important;
-}}
+.stButton > button:disabled {{ opacity:.45 !important; }}
+[data-testid="stProgressBar"] > div > div {{ background:#d22222 !important; }}
+
+/* Hero do jogador */
+.player-hero-title {{ text-align:center; font-weight:700; margin:8px 0 10px 0; }}
 </style>
 """, unsafe_allow_html=True)
 
