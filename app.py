@@ -27,6 +27,21 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- Boot da sessão: garante que o session_state existe e tem defaults ---
+from datetime import datetime
+
+def _boot_session():
+    if "booted" in st.session_state:
+        return
+    st.session_state["booted"] = True
+    # defaults que o app usa mais tarde
+    today = datetime.today()
+    st.session_state.setdefault("ano", today.year)
+    st.session_state.setdefault("mes", today.month)
+    st.session_state.setdefault("session_completed", set())
+
+_boot_session()
+
 # =========================
 # CSS — Sidebar 315px + Branding + UI
 # =========================
