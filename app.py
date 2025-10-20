@@ -95,7 +95,7 @@ section[data-testid="stSidebar"] div[data-testid="stSidebarContent"] > div:first
 }
 /* Devolve respiro geral ao topo da área principal */
 div.block-container{
-  padding-top: 1.4rem !important;   /* estava curto – volta a dar espaço */
+  padding-top: 2.0rem !important;   /* estava curto – volta a dar espaço */
 }
 /* Dá respiro extra aos grandes títulos gerados pelo Streamlit (h2/h3) */
 main [data-testid="stVerticalBlock"] h2,
