@@ -62,16 +62,6 @@ div.block-container {
   padding-right: .8rem;
 }
 
-/* Bloco do logótipo — agora mesmo colado ao topo */
-.sidebar-logo {
-  height: 150px;                 /* altura do “quadro” do logo */
-  display: flex;
-  align-items: flex-start;       /* logo encostado em cima */
-  justify-content: center;       /* centrado horizontalmente */
-  text-align: center;
-  margin: 0 0 8px 0;
-}
-
 /* Elimina qualquer margem automática */
 .sidebar-logo [data-testid="stImage"]{ margin: 0 !important; padding: 0 !important; }
 .sidebar-logo img {
