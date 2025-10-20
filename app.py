@@ -584,7 +584,7 @@ with col1:
     # Estado do mês
     aval_all = load_avaliacoes()
     completos = [int(r["player_id"]) for _, r in players.iterrows()
-                 if completed_for_player(aval_all, metrics, perfil, ano, mes, int(r["player_id"]), str(r["category"]).upper())]
+                 if completed_for_player(int(r["player_id"]), str(r["category"]).upper())]
     st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
 
 # ---- COL2: Instruções + Painel Admin (Radares)
