@@ -47,17 +47,14 @@ _boot_session()
 # =========================
 st.markdown("""
 <style>
-/* ====== LAYOUT GLOBAL (leve) ====== */
+/* ====== LAYOUT GLOBAL ====== */
 div.block-container {
-  /* podes ajustar se quiseres um pouco menos de “ar” */
   padding-top: 0.8rem;
   padding-bottom: 0.6rem;
 }
 
 /* ====== SIDEBAR ====== */
-
-/* Largura fixa da sidebar */
-[data-testid="stSidebar"]{
+[data-testid="stSidebar"] {
   min-width: 315px !important;
   max-width: 315px !important;
   background: #f3f3f3;
@@ -65,34 +62,33 @@ div.block-container {
   padding-right: .8rem;
 }
 
-/* Conteúdo da sidebar: volta ao fluxo normal (sem height:100vh, sem margens negativas) */
+/* Retira completamente o espaço acima do logo */
 section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
-  padding-top: 6px !important;   /* ligeiro respiro no topo */
+  padding-top: 0 !important;
+  margin-top: 0 !important;
 }
 
-/* Bloco do logótipo – centrado e baixo (não ocupa a página toda) */
-.sidebar-logo{
-  height: 160px;                 /* altura do “quadro” do logo */
+/* Bloco do logótipo — agora mesmo colado ao topo */
+.sidebar-logo {
+  height: 150px;                 /* altura do “quadro” do logo */
   display: flex;
-  align-items: center;           /* centro vertical */
-  justify-content: center;       /* centro horizontal */
+  align-items: flex-start;       /* logo encostado em cima */
+  justify-content: center;       /* centrado horizontalmente */
   text-align: center;
-  margin: 0 0 8px 0;             /* sem espaço morto acima */
+  margin: 0 0 8px 0;
 }
 
-/* O container de imagem do Streamlit não injeta margens */
+/* Elimina qualquer margem automática */
 .sidebar-logo [data-testid="stImage"]{ margin: 0 !important; padding: 0 !important; }
-
-/* Emblema dimensionado comedidamente */
-.sidebar-logo img{
+.sidebar-logo img {
   display: block;
   margin: 0 auto !important;
-  width: 140px;                  /* ajusta aqui (130–160) se quiseres */
+  width: 140px;                  /* tamanho do emblema */
   height: auto;
 }
 
 /* Título do projeto em vermelho Leixões, centrado e bold */
-.sidebar-title{
+.sidebar-title {
   color: #d22222;
   font-weight: 800;
   font-size: 18px;
@@ -101,7 +97,39 @@ section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
   margin: 6px 0 12px 0;
 }
 
-/* Lista de jogadores: mantemos o layout afinado */
+/* ====== JOGADOR SELECIONADO ====== */
+.player-hero-title { text-align: center; margin: 8px 0 10px 0; }
+.player-hero-title .player-num,
+.player-hero-title .player-name {
+  font-weight: 800 !important;
+  color: #111;
+  font-size: 20px;
+}
+.player-hero-title .player-num { margin-right: 6px; }
+
+/* ====== CABEÇALHOS (Jogador Selecionado / Instruções) ====== */
+h2, h3 {
+  font-weight: 800 !important;
+  color: #b00000 !important;   /* vermelho Leixões */
+  letter-spacing: 0.3px;
+  margin-top: 0.3rem !important;
+}
+h2 { font-size: 1.55rem !important; }
+h3 { font-size: 1.35rem !important; }
+
+/* ====== BOTÕES / PROGRESS ====== */
+.stButton > button{
+  background:#d22222 !important;
+  color:#fff !important;
+  border:none !important;
+  border-radius:8px !important;
+  padding:.55rem .9rem !important;
+  font-weight:700 !important;
+}
+.stButton > button:disabled{ opacity:.45 !important; }
+[data-testid="stProgressBar"] > div > div{ background:#d22222 !important; }
+
+/* ====== LISTA DE JOGADORES ====== */
 .player-item { margin-bottom: 10px; }
 .player-row-fixed { height: 60px; }
 .player-row-fixed [data-testid="column"]{ display:flex; align-items:center; gap:10px; }
@@ -118,27 +146,8 @@ section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
 .status-dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
 .status-done{ background:#2e7d32; }
 .status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
-
-/* Botões e progress bar com vermelho Leixões */
-.stButton > button{
-  background:#d22222 !important; color:#fff !important; border:none !important;
-  border-radius:8px !important; padding:.55rem .9rem !important; font-weight:700 !important;
-}
-.stButton > button:disabled{ opacity:.45 !important; }
-[data-testid="stProgressBar"] > div > div{ background:#d22222 !important; }
-
-/* Título do jogador — garantir BOLD */
-.player-hero-title { text-align:center; margin:8px 0 10px 0; }
-.player-hero-title .player-num,
-.player-hero-title .player-name {
-  font-weight: 800 !important;
-  color: #111111;
-  font-size: 20px;
-}
-.player-hero-title .player-num { margin-right: 6px; }
 </style>
 """, unsafe_allow_html=True)
-
 
 
 # ==========================
