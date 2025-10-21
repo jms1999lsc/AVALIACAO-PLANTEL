@@ -426,6 +426,131 @@ def has_funcoes_for(avaliador: str, ano:int, mes:int, player_id:int) -> bool:
     except Exception:
         return False
 
+# ==============================
+# Helpers de cálculo p/ ADMIN
+# ==============================
+LEIXOES_RED = "#d22222"
+GHOST_GRAY  = "#c6c6c6"
+DARK_GRAY   = "#444"
+
+def clean_mean(values):
+    vals = [v for v in values if v is not None]
+    if not vals:
+        return None
+    vals = sorted(vals)
+    n = len(vals)
+    if n >= 7:
+        vals = vals[1:-1]  # drop min & max
+    elif n >= 5 and (n - 2) >= 3:
+        vals = vals[1:-1]
+    return float(np.mean(vals)) if vals else None
+
+def letter_grade(x):
+    if x is None: return "-"
+    if x > 3.5:  return "A"
+    if x >= 3.0: return "B"
+    if x >= 2.0: return "C"
+    return "D"
+
+def potential_suffix(x):
+    if x is None: return ""
+    if x > 3.5:  return "++"
+    if x >= 3.0: return "+"
+    if x >= 2.0: return ""
+    return "-"
+
+def prev_period(ano:int, mes:int):
+    return (ano-1, 12) if mes == 1 else (ano, mes-1)
+
+def metric_clean_mean(aval_df, ano:int, mes:int, pid:int, metric_key:str):
+    # Ajusta aqui se as tuas colunas tiverem outros nomes
+    df = aval_df[(aval_df["ano"]==ano) & (aval_df["mes"]==mes) &
+                 (aval_df["player_id"]==pid) & (aval_df["metric_id"]==metric_key)]
+    col = "nota" if "score" in df.columns else ("valor" if "valor" in df.columns else None)
+    vals = df[col].tolist() if col else []
+    return clean_mean(vals)
+
+def family_clean_mean(aval_df, metrics_df, ano:int, mes:int, pid:int, family:str, player_group:str):
+    if family == "ESPECIFICO":
+        mask = (metrics_df["family"]=="ESPECIFICO") & (metrics_df["group"]==player_group)
+    else:
+        mask = (metrics_df["family"]==family)
+    keys = metrics_df.loc[mask].sort_values("ordem")["metric_key"].tolist()
+    vals = []
+    for k in keys:
+        mm = metric_clean_mean(aval_df, ano, mes, pid, k)
+        if mm is not None:
+            vals.append(mm)
+    return float(np.mean(vals)) if vals else None
+
+def standalone_clean_mean(aval_df, ano:int, mes:int, pid:int, field:str):
+    # field: "perfil_lsc" | "potencial"
+    df = aval_df[(aval_df["ano"]==ano) & (aval_df["mes"]==mes) &
+                 (aval_df["player_id"]==pid) & (aval_df["metric_key"]==field)]
+    col = "nota" if "nota" in df.columns else ("valor" if "valor" in df.columns else None)
+    vals = df[col].tolist() if col else []
+    return clean_mean(vals)
+
+SETORES = {
+    # Defesa
+    "Lateral Profundo":"DEFESA", "Lateral Construtor":"DEFESA", "Lateral Defensivo":"DEFESA",
+    "Defesa Central Construtor":"DEFESA", "Defesa Central Agressivo":"DEFESA",
+    # GR
+    "Guarda Redes":"GR", "Guarda Redes Construtor":"GR",
+    # Médios
+    "Médio Defensivo Pivot":"MEDIO", "Segundo Médio":"MEDIO", "Médio Box-to-Box":"MEDIO",
+    "Médio Organizador":"MEDIO", "10 Organizador":"MEDIO",
+    # Ataque
+    "Segundo Avançado":"ATAQUE", "Extremo Associativo":"ATAQUE", "Extremo 1x1":"ATAQUE",
+    "Extremo de Profundidade":"ATAQUE", "Ponta de Lança Referência":"ATAQUE",
+    "Ponta de Lança Móvel":"ATAQUE",
+}
+
+def consolidate_functions(funcoes_df, ano:int, mes:int, pid:int):
+    df = funcoes_df[(funcoes_df["ano"]==ano)&(funcoes_df["mes"]==mes)&(funcoes_df["player_id"]==pid)]
+    if df.empty: return set()
+    if "votos" in df.columns:
+        agg = df.groupby("funcao", as_index=False)["votos"].sum()
+        maxv = agg["votos"].max()
+        chosen = set(agg.loc[agg["votos"]>=3, "funcao"].tolist())
+        if not chosen and maxv>0:
+            chosen = set(agg.loc[agg["votos"]==maxv, "funcao"].tolist())
+    else:
+        agg = df.groupby("funcao").size().reset_index(name="votos")
+        maxv = agg["votos"].max()
+        chosen = set(agg.loc[agg["votos"]>=3, "funcao"].tolist())
+        if not chosen and maxv>0:
+            chosen = set(agg.loc[agg["votos"]==maxv, "funcao"].tolist())
+    return chosen
+
+def versatility_grade(funcoes:set[str]):
+    if not funcoes: return "-"
+    setores = {SETORES.get(f,"?") for f in funcoes}
+    n_fun, n_set = len(funcoes), len(setores)
+    if n_set >= 2 or n_fun >= 3:   return "A"
+    if n_set == 1 and n_fun >= 3:  return "B"
+    if n_set == 1 and n_fun >= 2:  return "C"
+    return "D"
+
+def radar_two_traces(title, labels, vals_now, vals_prev):
+    # fecha o polígono
+    cat = labels + labels[:1]
+    now = (vals_now or []) + (vals_now[:1] if vals_now else [])
+    prv = (vals_prev or []) + (vals_prev[:1] if vals_prev else [])
+    fig = go.Figure()
+    if vals_prev:
+        fig.add_trace(go.Scatterpolar(r=prv, theta=cat, name="Mês anterior",
+                                      line=dict(color=GHOST_GRAY,width=2)))
+    if vals_now:
+        fig.add_trace(go.Scatterpolar(r=now, theta=cat, name="Atual",
+                                      line=dict(color=LEIXOES_RED,width=3)))
+    fig.update_layout(
+        title=title, showlegend=True,
+        polar=dict(radialaxis=dict(range=[0,4], tickvals=[1,2,3,4], tickfont=dict(color=DARK_GRAY))),
+        margin=dict(l=10,r=10,t=40,b=10), height=380
+    )
+    return fig
+
 # =========================
 # Carregar dados
 # =========================
@@ -651,6 +776,105 @@ with col1:
     completos = [int(r["player_id"]) for _, r in players.iterrows()
                  if completed_for_player(int(r["player_id"]), str(r["category"]).upper())]
     st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
+
+# ======================
+# DASHBOARD DO ADMIN
+# ======================
+if perfil == "Administrador":
+    st.markdown("## Dashboard do Administrador")
+
+    # Jogador selecionado (vem da sidebar)
+    pid = int(selected_player)  # se o teu var tiver outro nome, ajusta aqui
+    sel = players.loc[players["id"]==pid].iloc[0]
+    player_group = str(sel.get("group") or sel.get("category")).upper()
+
+    # Períodos
+    ano_sel = int(ano); mes_sel = int(mes)
+    ano_prev, mes_prev = prev_period(ano_sel, mes_sel)
+
+    # --- Médias por família (mês atual e anterior) ---
+    fis_now  = family_clean_mean(aval_all, metrics, ano_sel, mes_sel, pid, "FISICO",      player_group)
+    men_now  = family_clean_mean(aval_all, metrics, ano_sel, mes_sel, pid, "MENTAL",     player_group)
+    esp_now  = family_clean_mean(aval_all, metrics, ano_sel, mes_sel, pid, "ESPECIFICO", player_group)
+
+    fis_prv  = family_clean_mean(aval_all, metrics, ano_prev, mes_prev, pid, "FISICO",      player_group)
+    men_prv  = family_clean_mean(aval_all, metrics, ano_prev, mes_prev, pid, "MENTAL",     player_group)
+    esp_prv  = family_clean_mean(aval_all, metrics, ano_prev, mes_prev, pid, "ESPECIFICO", player_group)
+
+    # --- Standalone ---
+    lsc_now  = standalone_clean_mean(aval_all, ano_sel, mes_sel, pid, "perfil_lsc")
+    pot_now  = standalone_clean_mean(aval_all, ano_sel, mes_sel, pid, "potencial")
+
+    # Média Global (3 famílias) + etiqueta final (letra + sufixo do potencial)
+    medias = [x for x in [fis_now, men_now, esp_now] if x is not None]
+    media_global = float(np.mean(medias)) if medias else None
+    etiqueta = f"{letter_grade(media_global)}{potential_suffix(pot_now)}"
+
+    # Versatilidade (a partir das funções consolidadas por maioria simples)
+    fun_set = consolidate_functions(funcoes_all, ano_sel, mes_sel, pid)
+    vers = versatility_grade(fun_set)
+
+    # ------ KPIs ------
+    c1,c2,c3,c4,c5,c6,c7 = st.columns(7)
+    c1.metric("Versatilidade", vers)
+    c2.metric("Perfil LSC",    letter_grade(lsc_now))
+    c3.metric("Físico",        letter_grade(fis_now))
+    c4.metric("Mental",        letter_grade(men_now))
+    c5.metric("Específico",    letter_grade(esp_now))
+    c6.metric("Média Global",  letter_grade(media_global))
+    c7.metric("Etiqueta Final", etiqueta)
+
+    st.divider()
+
+    # ------ Radares (mês vs mês-1) ------
+    def labels_vals_for_family(family:str):
+        if family=="ESPECIFICO":
+            mask = (metrics["family"]=="ESPECIFICO") & (metrics["group"]==player_group)
+        else:
+            mask = (metrics["family"]==family)
+        mlist = metrics.loc[mask].sort_values("ordem")["metric_key"].tolist()
+        # label amigável: se existir coluna 'label' em metrics
+        if "label" in metrics.columns:
+            labels = [metrics.set_index("metric_key").loc[k]["label"] for k in mlist]
+        else:
+            labels = mlist
+        now = [metric_clean_mean(aval_all, ano_sel, mes_sel, pid, k) for k in mlist]
+        prv = [metric_clean_mean(aval_all, ano_prev, mes_prev, pid, k) for k in mlist]
+        now = [v if v is not None else 0 for v in now]
+        prv = [v if v is not None else 0 for v in prv]
+        return labels, now, prv
+
+    colA,colB,colC = st.columns(3)
+    lbl, vnow, vprv = labels_vals_for_family("FISICO")
+    colA.plotly_chart(radar_two_traces("Radar Físico", lbl, vnow, vprv), use_container_width=True)
+
+    lbl, vnow, vprv = labels_vals_for_family("MENTAL")
+    colB.plotly_chart(radar_two_traces("Radar Mental", lbl, vnow, vprv), use_container_width=True)
+
+    lbl, vnow, vprv = labels_vals_for_family("ESPECIFICO")
+    pretty_group = player_group.title() if isinstance(player_group,str) else str(player_group)
+    colC.plotly_chart(radar_two_traces(f"Radar Específico ({pretty_group})", lbl, vnow, vprv), use_container_width=True)
+
+    st.caption("A linha cinza representa o mês anterior; a vermelha, o mês selecionado.")
+
+    # (Opcional) tabela de auditoria
+    with st.expander("Ver tabela detalhada (métricas e médias limpas)"):
+        rows = []
+        for fam in ["FISICO","MENTAL","ESPECIFICO"]:
+            if fam=="ESPECIFICO":
+                mask = (metrics["family"]=="ESPECIFICO") & (metrics["group"]==player_group)
+            else:
+                mask = (metrics["family"]==fam)
+            for k in metrics.loc[mask].sort_values("ordem")["metric_key"].tolist():
+                label_k = metrics.set_index("metric_key").loc[k]["label"] if "label" in metrics.columns else k
+                rows.append({
+                    "Família": fam,
+                    "Métrica": label_k,
+                    "Média (mês)": metric_clean_mean(aval_all, ano_sel, mes_sel, pid, k),
+                    "Média (mês-1)": metric_clean_mean(aval_all, ano_prev, mes_prev, pid, k),
+                })
+        import pandas as pd
+        st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
 # ---- COL2: Instruções + Painel Admin (Radares)
 with col2:
