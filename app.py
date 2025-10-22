@@ -743,15 +743,15 @@ with col1:
 st.markdown("### Funções em que apresenta domínio funcional")
 
 if funcoes.empty:
-st.warning("Nenhuma função encontrada em data/funcoes.csv.")
-funcoes_escolhidas = []
-else:
-funcoes_disp = funcoes["funcao"].dropna().unique().tolist()
-funcoes_escolhidas = st.multiselect(
-    "Escolha uma ou mais funções:",
-    options=funcoes_disp,
-    default=[],
-)
+    st.warning("Nenhuma função encontrada em data/funcoes.csv.")
+    funcoes_escolhidas = []
+    else:
+    funcoes_disp = funcoes["funcao"].dropna().unique().tolist()
+    funcoes_escolhidas = st.multiselect(
+        "Escolha uma ou mais funções:",
+        options=funcoes_disp,
+        default=[],
+    )
 
     obs = st.text_area("Observações")
 
