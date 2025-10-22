@@ -584,13 +584,13 @@ with st.sidebar:
     st.markdown("---")
     st.write("**Utilizador**")
     PERFIS = [
-        "Treinador Principal",
-        "Treinador Adjunto 1",
-        "Treinador Adjunto 2",
-        "Treinador Adjunto 3",
-        "Diretor Executivo",
-        "Diretor Desportivo",
-        "Lead Scout",
+        "João Nuno Fonseca",
+        "Rúben Pinheiro",
+        "João Amorim",
+        "Tiago Castro",
+        "Rodrigo Weber",
+        "Pedro Campos",
+        "João Maria Silva",
         "Administrador",
     ]
     perfil = st.selectbox("Perfil", PERFIS)
