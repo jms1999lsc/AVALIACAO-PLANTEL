@@ -739,7 +739,7 @@ with col1:
     except Exception:
         pass
 
-st.markdown("### Funções em que apresenta domínio funcional")
+st.markdown("### Posições em que apresenta domínio funcional")
 
 if funcoes.empty:
     st.warning("Nenhuma função encontrada em data/funcoes.csv.")
@@ -747,7 +747,7 @@ if funcoes.empty:
 else:
     funcoes_disp = funcoes["funcao"].dropna().unique().tolist()
     funcoes_escolhidas = st.multiselect(
-        "Escolha uma ou mais funções:",
+        "Escolha uma ou mais posições:",
         options=funcoes_disp,
         default=[],
     )
