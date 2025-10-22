@@ -1,17 +1,17 @@
-codigo,funcao,familia
-GR,Guarda Redes,GR
-GRC,Guarda Redes Construtor,GR
-LATD,Lateral Direito,Lateral
-LATE,Lateral Esquerdo,Lateral
-ALD,Ala Direito,Lateral
-ALE,Ala Esquerdo,Lateral
-DCD,Defesa Central Direito,Defesa
-DCC,Defesa Central Centro,Defesa
-DCE,Defesa Central Esquerdo,Defesa
-MDF,Médio Defensivo,Médio
-MC,Médio Centro,Médio
-MO,Médio Ofensivo,Médio
-SA,Segundo Avançado,Avançado
-EXTD,Extremo Direito,Avançado
-EXTE,Extremo Esquerdo,Avançado
-PL,Ponta de Lança,Avançado
+funcao,grupo
+Guarda Redes,GR
+Guarda Redes Construtor,GR
+Lateral Direito,Lateral
+Lateral Esquerdo,Lateral
+Ala Direito,Lateral
+Ala Esquerdo,Lateral
+Defesa Central Direito,Defesa
+Defesa Central Centro,Defesa
+Defesa Central Esquerdo,Defesa
+Médio Defensivo,Médio
+Médio Centro,Médio
+Médio Ofensivo,Médio
+Segundo Avançado,Avançado
+Extremo Direito,Avançado
+Extremo Esquerdo,Avançado
+Ponta de Lança,Avançado
