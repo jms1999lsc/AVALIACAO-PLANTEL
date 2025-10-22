@@ -881,10 +881,11 @@ with col2:
     st.markdown("#### Instruções")
     st.markdown("""
     <ol style="line-height:1.7; font-size:.95rem;">
-      <li>Escolha o <strong>jogador</strong> na barra lateral.</li>
+      <li>Escolha o seu <strong>Nome de Utilizador</strong> na barra lateral.</li>
+      <li>Escolha o <strong>jogador</strong>, mais abaixo na barra lateral.</li>
       <li>Preencha todos os <strong>parâmetros obrigatórios</strong> (1–4).</li>
       <li>Selecione as <strong>Funções</strong> (pelo menos uma).</li>
-      <li>Clique <strong>Submeter avaliação</strong> — a gravação é 1 linha por métrica.</li>
+      <li>Clique <strong>Submeter avaliação</strong></li>
     </ol>
     <p style="font-style: italic; font-size:.9rem;">
       As avaliações só são visíveis ao <strong>Administrador</strong>. O mês fecha quando os <strong>25/25</strong> estiverem completos.
