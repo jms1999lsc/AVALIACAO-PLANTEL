@@ -15,26 +15,6 @@ import plotly.graph_objects as go
 # Fonte principal: Google Sheets (True) | CSV local (False)
 USE_SHEETS = True
 
-# --- Carregamento das Funções ---
-FUNCOES_CSV = os.path.join("data", "funcoes.csv")
-
-@st.cache_data
-def load_funcoes():
-    """
-    Lê o catálogo de funções (papéis/funções em campo) a partir do ficheiro local CSV.
-    """
-    try:
-        df = pd.read_csv(FUNCOES_CSV)
-        if "funcao" not in df.columns:
-            st.error("O ficheiro funcoes.csv precisa de ter uma coluna chamada 'funcao'.")
-        return df
-    except Exception as e:
-        st.error(f"Erro ao carregar funcoes.csv: {e}")
-        return pd.DataFrame(columns=["funcao"])
-
-funcoes = load_funcoes()
-
-
 # Cores
 PRIMARY = "#d22222"  # vermelho Leixões
 BLACK   = "#111111"
@@ -61,6 +41,25 @@ def _boot_session():
     st.session_state.setdefault("session_completed", set())
 
 _boot_session()
+
+# --- Carregamento das Funções ---
+FUNCOES_CSV = os.path.join("data", "funcoes.csv")
+
+@st.cache_data
+def load_funcoes():
+    """
+    Lê o catálogo de funções (papéis/funções em campo) a partir do ficheiro local CSV.
+    """
+    try:
+        df = pd.read_csv(FUNCOES_CSV)
+        if "funcao" not in df.columns:
+            st.error("O ficheiro funcoes.csv precisa de ter uma coluna chamada 'funcao'.")
+        return df
+    except Exception as e:
+        st.error(f"Erro ao carregar funcoes.csv: {e}")
+        return pd.DataFrame(columns=["funcao"])
+
+funcoes = load_funcoes()
 
 # =========================
 # CSS — Sidebar 315px + Branding + UI
