@@ -15,6 +15,26 @@ import plotly.graph_objects as go
 # Fonte principal: Google Sheets (True) | CSV local (False)
 USE_SHEETS = True
 
+# --- Carregamento das Funções ---
+FUNCOES_CSV = os.path.join("data", "funcoes.csv")
+
+@st.cache_data
+def load_funcoes():
+    """
+    Lê o catálogo de funções (papéis/funções em campo) a partir do ficheiro local CSV.
+    """
+    try:
+        df = pd.read_csv(FUNCOES_CSV)
+        if "funcao" not in df.columns:
+            st.error("O ficheiro funcoes.csv precisa de ter uma coluna chamada 'funcao'.")
+        return df
+    except Exception as e:
+        st.error(f"Erro ao carregar funcoes.csv: {e}")
+        return pd.DataFrame(columns=["funcao"])
+
+funcoes = load_funcoes()
+
+
 # Cores
 PRIMARY = "#d22222"  # vermelho Leixões
 BLACK   = "#111111"
@@ -720,12 +740,18 @@ with col1:
     except Exception:
         pass
 
-    sel_funcoes = st.multiselect(
-        "Funções em que apresenta domínio funcional (obrigatório)",
-        options=funcoes_options,
-        default=prev_funcoes,
-        key=f"fun_{selecionado_id}_{ano}_{mes}_{perfil}"
-    )
+st.markdown("### Funções em que apresenta domínio funcional")
+
+if funcoes.empty:
+st.warning("Nenhuma função encontrada em data/funcoes.csv.")
+funcoes_escolhidas = []
+else:
+funcoes_disp = funcoes["funcao"].dropna().unique().tolist()
+funcoes_escolhidas = st.multiselect(
+    "Escolha uma ou mais funções:",
+    options=funcoes_disp,
+    default=[],
+)
 
     obs = st.text_area("Observações")
 
