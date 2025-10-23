@@ -934,7 +934,7 @@ if perfil == "Administrador":
     st.caption("A linha cinza representa o mês anterior; a vermelha, o mês selecionado.")
 
     # (Opcional) tabela de auditoria
-    with st.expander("Ver tabela detalhada (métricas e médias limpas)"):
+with st.expander("Ver tabela detalhada (métricas e médias limpas)"):
     rows = []
 
     fams = ["FISICO", "MENTAL", "ESPECIFICO"]
