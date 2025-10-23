@@ -782,11 +782,11 @@ else:
             save_avaliacoes_bulk(rows)
 
         # Funções obrigatórias
-        if len(sel_funcoes) == 0:
+        if len(funcoes_escolhidas) == 0:
             st.error("Selecione pelo menos uma Função antes de submeter.")
             st.stop()
         else:
-            funcoes_str = "; ".join(sel_funcoes)
+            funcoes_str = "; ".join(funcoes_escolhidas)
             save_funcoes_tag(ano, mes, perfil, int(sel["player_id"]), funcoes_str)
 
         st.session_state["session_completed"].add((perfil,ano,mes,int(sel["player_id"])))
