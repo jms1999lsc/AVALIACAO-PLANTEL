@@ -556,7 +556,7 @@ def versatility_grade(funcoes:set[str]):
 players = load_players()
 metrics = load_metrics()
 aval_all = load_avaliacoes()
-funcoes_all = load_funcoes_sheet()
+FUNCOES_CAT = load_funcoes()
 weights_df = load_weights_df()
 
 if "session_completed" not in st.session_state:
