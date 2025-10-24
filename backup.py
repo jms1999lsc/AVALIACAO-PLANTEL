@@ -1,4 +1,5 @@
-# app.py — Leixões SC — Avaliação de Plantel (Sheets SoT + métricas dinâmicas + Funções antigo)
+# app.py — Leixões SC — Avaliação de Plantel
+# (Sheets SoT + métricas dinâmicas + Funções antigo + médias ponderadas 60/40 + perfis dinâmicos)
 
 import os
 from datetime import datetime
@@ -12,8 +13,7 @@ import plotly.graph_objects as go
 # CONFIGURAÇÕES GERAIS DE AMBIENTE
 # ====================================
 
-# Fonte principal: Google Sheets (True) | CSV local (False)
-USE_SHEETS = True
+USE_SHEETS = True  # Fonte principal: Google Sheets (True) | CSV local (False)
 
 # Cores
 PRIMARY = "#d22222"  # vermelho Leixões
@@ -28,38 +28,16 @@ st.set_page_config(
 )
 
 # --- Boot da sessão: garante que o session_state existe e tem defaults ---
-from datetime import datetime
-
 def _boot_session():
     if "booted" in st.session_state:
         return
     st.session_state["booted"] = True
-    # defaults que o app usa mais tarde
     today = datetime.today()
     st.session_state.setdefault("ano", today.year)
     st.session_state.setdefault("mes", today.month)
     st.session_state.setdefault("session_completed", set())
 
 _boot_session()
-
-# --- Carregamento das Funções ---
-FUNCOES_CSV = os.path.join("data", "funcoes.csv")
-
-@st.cache_data
-def load_funcoes():
-    """
-    Lê o catálogo de funções (papéis/funções em campo) a partir do ficheiro local CSV.
-    """
-    try:
-        df = pd.read_csv(FUNCOES_CSV)
-        if "funcao" not in df.columns:
-            st.error("O ficheiro funcoes.csv precisa de ter uma coluna chamada 'funcao'.")
-        return df
-    except Exception as e:
-        st.error(f"Erro ao carregar funcoes.csv: {e}")
-        return pd.DataFrame(columns=["funcao"])
-
-funcoes = load_funcoes()
 
 # =========================
 # CSS — Sidebar 315px + Branding + UI
@@ -68,7 +46,7 @@ st.markdown("""
 <style>
 /* ====== LAYOUT GLOBAL ====== */
 div.block-container {
-  padding-top: 0.8rem;
+  padding-top: 2.0rem !important;
   padding-bottom: 0.6rem;
 }
 
@@ -81,14 +59,12 @@ div.block-container {
   padding-right: .8rem;
 }
 
-/* Elimina qualquer margem automática */
-.sidebar-logo [data-testid="stImage"]{ margin: 0 !important; padding: 0 !important; }
-.sidebar-logo img {
-  display: block;
-  margin: 0 auto !important;
-  width: 110px;                  /* tamanho do emblema */
-  height: auto;
+/* Logo centrado e sem espaço morto */
+section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
+  padding-top: 0 !important;
 }
+.sidebar-logo [data-testid="stImage"]{ margin: 0 !important; padding: 0 !important; }
+.sidebar-logo img { display:block; margin: -18px auto 6px auto !important; width: 130px; height: auto; }
 
 /* Título do projeto em vermelho Leixões, centrado e bold */
 .sidebar-title {
@@ -98,31 +74,6 @@ div.block-container {
   line-height: 1.25;
   text-align: center;
   margin: 6px 0 12px 0;
-}
-/* PUXA O LOGO PARA CIMA (remove espaço morto) */
-section[data-testid="stSidebar"] div[data-testid="stSidebarContent"]{
-  padding-top: 0 !important;   /* sem acolchoamento no topo */
-}
-section[data-testid="stSidebar"] div[data-testid="stSidebarContent"] > div:first-child{
-  margin-top: -18px !important;   /* sobe o bloco do logo ~18px; ajusta -22/-24 se quiseres ainda mais acima */
-}
-
-/* (opcional) tamanho do emblema */
-.sidebar-logo img{
-  width: 130px;   /* 130–150 é a zona segura */
-  height: auto;
-}
-/* Devolve respiro geral ao topo da área principal */
-div.block-container{
-  padding-top: 2.0rem !important;   /* estava curto – volta a dar espaço */
-}
-/* Dá respiro extra aos grandes títulos gerados pelo Streamlit (h2/h3) */
-main [data-testid="stVerticalBlock"] h2,
-main [data-testid="stVerticalBlock"] h3{
-  margin-top: 1.2rem !important;    /* espaço antes do título */
-  margin-bottom: .6rem !important;
-  font-weight: 800 !important;       /* reforça destaque */
-  color: #b00000 !important;         /* vermelho Leixões para “secções” */
 }
 
 /* ====== JOGADOR SELECIONADO ====== */
@@ -135,10 +86,10 @@ main [data-testid="stVerticalBlock"] h3{
 }
 .player-hero-title .player-num { margin-right: 6px; }
 
-/* ====== CABEÇALHOS (Jogador Selecionado / Instruções) ====== */
+/* ====== CABEÇALHOS ====== */
 h2, h3 {
   font-weight: 800 !important;
-  color: #b00000 !important;   /* vermelho Leixões */
+  color: #b00000 !important;
   letter-spacing: 0.3px;
   margin-top: 0.3rem !important;
 }
@@ -176,7 +127,6 @@ h3 { font-size: 1.35rem !important; }
 .status-pending{ background:#cfcfcf; border:1px solid #bdbdbd; }
 </style>
 """, unsafe_allow_html=True)
-
 
 # ==========================
 # GOOGLE SHEETS CONFIG + HELPERS
@@ -253,9 +203,6 @@ AVALIACOES_CSV = os.path.join(DATA_DIR, "avaliacoes.csv")
 FUNCOES_CSV    = os.path.join(DATA_DIR, "funcoes.csv")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# ==========================
-# LOADERS (Sheets + fallback)
-# ==========================
 def _read_csv_flex(path: str, columns: list[str] | None = None) -> pd.DataFrame:
     if not os.path.exists(path):
         return pd.DataFrame(columns=columns or [])
@@ -266,6 +213,9 @@ def _read_csv_flex(path: str, columns: list[str] | None = None) -> pd.DataFrame:
             continue
     return pd.read_csv(path)
 
+# ==========================
+# LOADERS
+# ==========================
 @st.cache_data(ttl=120)
 def load_players() -> pd.DataFrame:
     df = read_sheet("players") if USE_SHEETS else _read_csv_flex(PLAYERS_CSV)
@@ -315,18 +265,80 @@ def load_avaliacoes() -> pd.DataFrame:
         cols = ["timestamp","ano","mes","avaliador","player_id","player_numero","player_nome","player_category","metric_id","score","observacoes"]
         return pd.DataFrame(columns=cols)
     df.columns = [c.strip().lower() for c in df.columns]
+    # normaliza tipos
+    for c in ("ano","mes","player_id","score"):
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    df["avaliador"] = df["avaliador"].astype(str).str.strip()
+    df["metric_id"] = df["metric_id"].astype(str).str.strip().str.upper()
     return df
 
 @st.cache_data(ttl=120)
-def load_fechos() -> pd.DataFrame:
-    df = read_sheet("fechos") if USE_SHEETS else pd.DataFrame()
+def load_funcoes_sheet() -> pd.DataFrame:
+    df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
     if df.empty:
-        return pd.DataFrame(columns=["timestamp","ano","mes","avaliador","completos","total","status"])
+        return pd.DataFrame(columns=["timestamp","ano","mes","avaliador","player_id","funcoes"])
     df.columns = [c.strip().lower() for c in df.columns]
+    for c in ("ano","mes","player_id"):
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    df["avaliador"] = df["avaliador"].astype(str).str.strip()
     return df
 
+# ---- Pesos / Perfis (aba `weights`) ----
+DEFAULT_WEIGHTS = pd.DataFrame([
+    # Equipa Técnica (ET): 60% total
+    ["Treinador Principal", "ET", 0.60, 0.30],
+    *[[f"Treinador Adjunto {i}", "ET", 0.60, 0.70/8] for i in range(1,9)],
+    # Direção Desportiva (DD): 40% total
+    ["Diretor Executivo", "DD", 0.40, 0.25],
+    ["Lead Scout",        "DD", 0.40, 0.15],
+], columns=["perfil","grupo","peso_grupo","peso_individual"])
+
+@st.cache_data(ttl=120)
+def load_weights_df() -> pd.DataFrame:
+    """
+    Lê a aba 'weights' e aceita vírgula decimal nos pesos.
+    Se, após limpeza, ficar vazia, retorna DEFAULT_WEIGHTS.
+    Esperado: perfil | grupo | peso_grupo | peso_individual
+    grupos: 'ET' (Equipa Técnica) e 'DD' (Direção Desportiva)
+    """
+    try:
+        if USE_SHEETS:
+            df = read_sheet("weights")
+            if not df.empty:
+                df.columns = [c.strip().lower() for c in df.columns]
+                need = {"perfil", "grupo", "peso_grupo", "peso_individual"}
+                if need.issubset(df.columns):
+                    # normaliza strings
+                    df["perfil"] = df["perfil"].astype(str).str.strip()
+                    df["grupo"]  = df["grupo"].astype(str).str.strip().str.upper()
+
+                    # aceita vírgula decimal
+                    for col in ("peso_grupo", "peso_individual"):
+                        df[col] = (
+                            df[col]
+                            .astype(str)
+                            .str.replace(",", ".", regex=False)
+                        )
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+                    # descarta linhas inválidas
+                    df = df.dropna(subset=["perfil", "grupo", "peso_grupo", "peso_individual"])
+                    # se depois disto ainda tiver linhas, usa-as
+                    if not df.empty:
+                        return df
+        # fallback se sheet ausente/ inválida/ vazia
+        return DEFAULT_WEIGHTS.copy()
+    except Exception:
+        return DEFAULT_WEIGHTS.copy()
+
+# ==========================
+# SALVAR
+# ==========================
 def save_avaliacoes_bulk(rows_dicts: list[dict]):
-    header = ["timestamp","ano","mes","avaliador","player_id","player_numero","player_nome","player_category","metric_id","score","observacoes"]
+    header = ["timestamp","ano","mes","avaliador","player_id","player_numero","player_nome",
+              "player_category","metric_id","score","observacoes"]
     rows = [[rd.get(k,"") for k in header] for rd in rows_dicts]
     ok = False
     if USE_SHEETS:
@@ -347,32 +359,21 @@ def save_funcoes_tag(ano:int, mes:int, avaliador:str, player_id:int, funcoes_tex
         df = _read_csv_flex(FUNCOES_CSV, columns=header)
         df = pd.concat([df, pd.DataFrame(row, columns=header)], ignore_index=True)
         df.to_csv(FUNCOES_CSV, index=False, encoding="utf-8")
+    load_funcoes_sheet.clear()
 
-# ===== Catálogo de Funções (multiselect obrigatório) =====
+# ===== Catálogo de Funções (multiselect antigo) =====
 FUNCOES_TAXONOMY_DEFAULT = [
-    "Guarda Redes",
-    "Guarda Redes Construtor",
-    "Lateral Profundo",
-    "Lateral Construtor",
-    "Lateral Defensivo",
-    "Defesa Central Construtor",
-    "Defesa Central Agressivo",
-    "Médio Defensivo Pivot",
-    "Segundo Médio",
-    "Médio Box-to-Box",
-    "Médio Organizador",
-    "10 Organizador",
-    "Segundo Avançado",
-    "Extremo Associativo",
-    "Extremo 1x1",
-    "Extremo de Profundidade",
-    "Ponta de Lança Referência",
-    "Ponta de Lança Móvel",
+    "Guarda Redes","Guarda Redes Construtor",
+    "Lateral Profundo","Lateral Construtor","Lateral Defensivo",
+    "Defesa Central Construtor","Defesa Central Agressivo",
+    "Médio Defensivo Pivot","Segundo Médio","Médio Box-to-Box",
+    "Médio Organizador","10 Organizador","Segundo Avançado",
+    "Extremo Associativo","Extremo 1x1","Extremo de Profundidade",
+    "Ponta de Lança Referência","Ponta de Lança Móvel",
 ]
 
 @st.cache_data(ttl=600)
 def load_funcoes_catalogo() -> list[str]:
-    """Lê a aba opcional 'funcoes_catalogo'. Se não existir, usa a lista default."""
     if USE_SHEETS:
         df = read_sheet("funcoes_catalogo")
         if not df.empty:
@@ -383,7 +384,7 @@ def load_funcoes_catalogo() -> list[str]:
     return FUNCOES_TAXONOMY_DEFAULT[:]
 
 # =========================
-# Helpers
+# Helpers (formulário e admin)
 # =========================
 def foto_path_for(player_id: int, size: int = 60) -> str:
     base = f"assets/fotos/{player_id}"
@@ -399,71 +400,106 @@ def metrics_for_category(metrics: pd.DataFrame, category: str) -> dict[str, pd.D
     esp = metrics[(metrics["scope"]=="especifico") & (metrics["group"]=="categoria") & (metrics["category"]==category)].copy()
     return {"enc_pot": enc_pot, "fisicos": fis, "mentais": men, "especificos": esp}
 
-def trimmed_mean(values: list[float]) -> float | None:
-    vals = [float(v) for v in values if pd.notna(v)]
+def get_metric_ids_for_family(metrics: pd.DataFrame, category: str, family: str) -> list[str]:
+    family = family.upper()
+    if family == "FISICO":
+        df = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="fisicos")]
+    elif family == "MENTAL":
+        df = metrics[(metrics["scope"]=="transversal") & (metrics["group"]=="mentais")]
+    elif family == "ESPECIFICO":
+        df = metrics[(metrics["scope"]=="especifico") & (metrics["group"]=="categoria") & (metrics["category"]==category)]
+    else:
+        return []
+    return df.sort_values("ordem")["metric_id"].astype(str).str.upper().tolist()
+
+def trimmed_weighted_mean(pairs: list[tuple[float,float]]) -> float | None:
+    """
+    pairs = [(score, weight_norm), ...]
+    Trimming agregado: remove 1 menor e 1 maior score (se n>=3) e re-normaliza pesos.
+    """
+    vals = [(float(s), float(w)) for s,w in pairs if pd.notna(s) and pd.notna(w)]
     n = len(vals)
-    if n == 0: return None
+    if n == 0:
+        return None
+    vals.sort(key=lambda x: x[0])  # por score
     if n >= 3:
-        return (sum(vals) - min(vals) - max(vals)) / (n - 2)
-    return sum(vals)/n
-
-def is_completed_for_player(av_df: pd.DataFrame, metrics: pd.DataFrame, avaliador: str, ano:int, mes:int, player_id:int, player_cat:str) -> bool:
-    sec = metrics_for_category(metrics, player_cat)
-    req = pd.concat([
-        sec["enc_pot"][sec["enc_pot"]["obrigatorio"]],
-        sec["fisicos"][sec["fisicos"]["obrigatorio"]],
-        sec["mentais"][sec["mentais"]["obrigatorio"]],
-        sec["especificos"][sec["especificos"]["obrigatorio"]],
-    ], ignore_index=True)
-    needed = set(req["metric_id"].tolist())
-    if av_df.empty or not needed:
-        return False
-    df = av_df
-    try:
-        m = ((df["avaliador"].astype(str)==avaliador) &
-             (df["ano"].astype(int)==int(ano)) &
-             (df["mes"].astype(int)==int(mes)) &
-             (df["player_id"].astype(int)==int(player_id)))
-        got = set(df.loc[m, "metric_id"].astype(str).str.upper().tolist())
-        return needed.issubset(got)
-    except Exception:
-        return False
-
-def has_funcoes_for(avaliador: str, ano:int, mes:int, player_id:int) -> bool:
-    try:
-        df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
-        if df.empty:
-            return False
-        df.columns = [c.strip().lower() for c in df.columns]
-        m = (
-            (df.get("avaliador","").astype(str)==str(avaliador)) &
-            (df.get("ano","").astype(str)==str(ano)) &
-            (df.get("mes","").astype(str)==str(mes)) &
-            (df.get("player_id","").astype(str)==str(int(player_id)))
-        )
-        return bool(m.any())
-    except Exception:
-        return False
-
-# ==============================
-# Helpers de cálculo p/ ADMIN
-# ==============================
-LEIXOES_RED = "#d22222"
-GHOST_GRAY  = "#c6c6c6"
-DARK_GRAY   = "#444"
-
-def clean_mean(values):
-    vals = [v for v in values if v is not None]
+        vals = vals[1:-1]  # drop menor e maior
     if not vals:
         return None
-    vals = sorted(vals)
-    n = len(vals)
-    if n >= 7:
-        vals = vals[1:-1]  # drop min & max
-    elif n >= 5 and (n - 2) >= 3:
-        vals = vals[1:-1]
+    total_w = sum(w for _,w in vals)
+    if total_w <= 0:
+        return None
+    return sum(s*w for s,w in vals) / total_w
+
+def weighted_metric_mean(av_df: pd.DataFrame, weights_df: pd.DataFrame,
+                         ano:int, mes:int, pid:int, metric_id:str) -> float | None:
+    """
+    Média ponderada 60/40 ET/DD com trimming agregado.
+    Re-normaliza pesos quando um grupo não tem avaliações.
+    """
+    df = av_df[(av_df["ano"]==ano) & (av_df["mes"]==mes) &
+               (av_df["player_id"]==pid) & (av_df["metric_id"]==metric_id)]
+    if df.empty:
+        return None
+
+    df = df.copy()
+    df["score"] = pd.to_numeric(df["score"], errors="coerce")
+
+    # junta grupos e pesos
+    wd = weights_df.copy()
+    wd["perfil"] = wd["perfil"].astype(str).str.strip()
+    wd["grupo"]  = wd["grupo"].astype(str).str.upper()
+
+    merged = df.merge(wd, left_on="avaliador", right_on="perfil", how="left")
+    # se algum avaliador não estiver em weights, ignora (sem peso)
+    merged = merged.dropna(subset=["grupo","peso_grupo","peso_individual","score"]).copy()
+
+    if merged.empty:
+        return None
+
+    # re-normaliza por grupos presentes
+    present_groups = merged["grupo"].unique().tolist()
+    total_group_weight_present = wd[wd["grupo"].isin(present_groups)]["peso_grupo"].dropna().groupby(wd["grupo"]).first().sum()
+    if total_group_weight_present <= 0:
+        return None
+
+    # peso do grupo normalizado (só grupos presentes)
+    group_norm = {}
+    for g in present_groups:
+        g_total = wd[wd["grupo"]==g]["peso_grupo"].iloc[0]
+        group_norm[g] = float(g_total) / float(total_group_weight_present)
+
+    # dentro de cada grupo presente, normaliza por avaliadores que efetivamente avaliaram esta métrica
+    pairs = []
+    for g in present_groups:
+        sub = merged[merged["grupo"]==g]
+        if sub.empty:
+            continue
+        sum_ind = sub["peso_individual"].sum()
+        if sum_ind <= 0:
+            continue
+        for _, r in sub.iterrows():
+            w = group_norm[g] * (float(r["peso_individual"]) / float(sum_ind))
+            pairs.append((float(r["score"]), w))
+
+    return trimmed_weighted_mean(pairs)
+
+def family_weighted_mean(av_df: pd.DataFrame, weights_df: pd.DataFrame,
+                         metrics_df: pd.DataFrame, ano:int, mes:int, pid:int,
+                         family:str, player_cat:str) -> float | None:
+    ids = get_metric_ids_for_family(metrics_df, player_cat, family)
+    vals = []
+    for mid in ids:
+        val = weighted_metric_mean(av_df, weights_df, ano, mes, pid, mid)
+        if val is not None:
+            vals.append(val)
     return float(np.mean(vals)) if vals else None
 
+def standalone_weighted_mean(av_df: pd.DataFrame, weights_df: pd.DataFrame,
+                             ano:int, mes:int, pid:int, metric_id:str) -> float | None:
+    return weighted_metric_mean(av_df, weights_df, ano, mes, pid, metric_id)
+
+# Etiquetas
 def letter_grade(x):
     if x is None: return "-"
     if x > 3.5:  return "A"
@@ -481,45 +517,13 @@ def potential_suffix(x):
 def prev_period(ano:int, mes:int):
     return (ano-1, 12) if mes == 1 else (ano, mes-1)
 
-def metric_clean_mean(aval_df, ano:int, mes:int, pid:int, metric_key:str):
-    # Ajusta aqui se as tuas colunas tiverem outros nomes
-    df = aval_df[(aval_df["ano"]==ano) & (aval_df["mes"]==mes) &
-                 (aval_df["player_id"]==pid) & (aval_df["metric_id"]==metric_key)]
-    col = "nota" if "score" in df.columns else ("valor" if "valor" in df.columns else None)
-    vals = df[col].tolist() if col else []
-    return clean_mean(vals)
-
-def family_clean_mean(aval_df, metrics_df, ano:int, mes:int, pid:int, family:str, player_group:str):
-    if family == "ESPECIFICO":
-        mask = (metrics_df["family"]=="ESPECIFICO") & (metrics_df["group"]==player_group)
-    else:
-        mask = (metrics_df["family"]==family)
-    keys = metrics_df.loc[mask].sort_values("ordem")["metric_key"].tolist()
-    vals = []
-    for k in keys:
-        mm = metric_clean_mean(aval_df, ano, mes, pid, k)
-        if mm is not None:
-            vals.append(mm)
-    return float(np.mean(vals)) if vals else None
-
-def standalone_clean_mean(aval_df, ano:int, mes:int, pid:int, field:str):
-    # field: "perfil_lsc" | "potencial"
-    df = aval_df[(aval_df["ano"]==ano) & (aval_df["mes"]==mes) &
-                 (aval_df["player_id"]==pid) & (aval_df["metric_key"]==field)]
-    col = "nota" if "nota" in df.columns else ("valor" if "valor" in df.columns else None)
-    vals = df[col].tolist() if col else []
-    return clean_mean(vals)
-
+# Versatilidade
 SETORES = {
-    # Defesa
     "Lateral Profundo":"DEFESA", "Lateral Construtor":"DEFESA", "Lateral Defensivo":"DEFESA",
     "Defesa Central Construtor":"DEFESA", "Defesa Central Agressivo":"DEFESA",
-    # GR
     "Guarda Redes":"GR", "Guarda Redes Construtor":"GR",
-    # Médios
     "Médio Defensivo Pivot":"MEDIO", "Segundo Médio":"MEDIO", "Médio Box-to-Box":"MEDIO",
     "Médio Organizador":"MEDIO", "10 Organizador":"MEDIO",
-    # Ataque
     "Segundo Avançado":"ATAQUE", "Extremo Associativo":"ATAQUE", "Extremo 1x1":"ATAQUE",
     "Extremo de Profundidade":"ATAQUE", "Ponta de Lança Referência":"ATAQUE",
     "Ponta de Lança Móvel":"ATAQUE",
@@ -528,19 +532,12 @@ SETORES = {
 def consolidate_functions(funcoes_df, ano:int, mes:int, pid:int):
     df = funcoes_df[(funcoes_df["ano"]==ano)&(funcoes_df["mes"]==mes)&(funcoes_df["player_id"]==pid)]
     if df.empty: return set()
-    if "votos" in df.columns:
-        agg = df.groupby("funcao", as_index=False)["votos"].sum()
-        maxv = agg["votos"].max()
-        chosen = set(agg.loc[agg["votos"]>=3, "funcao"].tolist())
-        if not chosen and maxv>0:
-            chosen = set(agg.loc[agg["votos"]==maxv, "funcao"].tolist())
-    else:
-        agg = df.groupby("funcao").size().reset_index(name="votos")
-        maxv = agg["votos"].max()
-        chosen = set(agg.loc[agg["votos"]>=3, "funcao"].tolist())
-        if not chosen and maxv>0:
-            chosen = set(agg.loc[agg["votos"]==maxv, "funcao"].tolist())
-    return chosen
+    # coluna 'funcoes' guarda string "A; B; C"
+    funs = set()
+    for s in df["funcoes"].astype(str):
+        for f in [x.strip() for x in s.split(";") if x.strip()]:
+            funs.add(f)
+    return funs
 
 def versatility_grade(funcoes:set[str]):
     if not funcoes: return "-"
@@ -551,32 +548,14 @@ def versatility_grade(funcoes:set[str]):
     if n_set == 1 and n_fun >= 2:  return "C"
     return "D"
 
-def radar_two_traces(title, labels, vals_now, vals_prev):
-    # fecha o polígono
-    cat = labels + labels[:1]
-    now = (vals_now or []) + (vals_now[:1] if vals_now else [])
-    prv = (vals_prev or []) + (vals_prev[:1] if vals_prev else [])
-    fig = go.Figure()
-    if vals_prev:
-        fig.add_trace(go.Scatterpolar(r=prv, theta=cat, name="Mês anterior",
-                                      line=dict(color=GHOST_GRAY,width=2)))
-    if vals_now:
-        fig.add_trace(go.Scatterpolar(r=now, theta=cat, name="Atual",
-                                      line=dict(color=LEIXOES_RED,width=3)))
-    fig.update_layout(
-        title=title, showlegend=True,
-        polar=dict(radialaxis=dict(range=[0,4], tickvals=[1,2,3,4], tickfont=dict(color=DARK_GRAY))),
-        margin=dict(l=10,r=10,t=40,b=10), height=380
-    )
-    return fig
-
 # =========================
 # Carregar dados
 # =========================
 players = load_players()
 metrics = load_metrics()
 aval_all = load_avaliacoes()
-fechos   = load_fechos()
+funcoes_all = load_funcoes_sheet()
+weights_df = load_weights_df()
 
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"]=set()
@@ -602,17 +581,16 @@ with st.sidebar:
 
     st.markdown("---")
     st.write("**Utilizador**")
-    PERFIS = [
-        "João Nuno Fonseca",
-        "Rúben Pinheiro",
-        "João Amorim",
-        "Tiago Castro",
-        "Rodrigo Weber",
-        "Pedro Campos",
-        "João Maria Silva",
-        "Administrador",
-    ]
-    perfil = st.selectbox("Perfil", PERFIS)
+
+    # Perfis dinâmicos (weights) + opção vazia + Administrador
+    perfis_weights = weights_df["perfil"].dropna().astype(str).tolist()
+    PERFIS = ["— selecione —"] + perfis_weights + ["Administrador"]
+    perfil = st.selectbox("Perfil", PERFIS, index=0)
+
+    if perfil == "— selecione —":
+        st.warning("Selecione o seu perfil na barra lateral para continuar.")
+        st.stop()
+
     if perfil=="Administrador":
         code = st.text_input("Código de acesso", type="password", value="")
         if code != "leixoes2025":
@@ -625,6 +603,44 @@ with st.sidebar:
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 
 # progresso + seleção
+def is_completed_for_player(av_df: pd.DataFrame, metrics: pd.DataFrame, avaliador: str,
+                            ano:int, mes:int, player_id:int, player_cat:str) -> bool:
+    sec = metrics_for_category(metrics, player_cat)
+    req = pd.concat([
+        sec["enc_pot"][sec["enc_pot"]["obrigatorio"]],
+        sec["fisicos"][sec["fisicos"]["obrigatorio"]],
+        sec["mentais"][sec["mentais"]["obrigatorio"]],
+        sec["especificos"][sec["especificos"]["obrigatorio"]],
+    ], ignore_index=True)
+    needed = set(req["metric_id"].tolist())
+    if av_df.empty or not needed:
+        return False
+    df = av_df
+    try:
+        m = ((df["avaliador"].astype(str)==avaliador) &
+             (df["ano"].astype(int)==int(ano)) &
+             (df["mes"].astype(int)==int(mes)) &
+             (df["player_id"].astype(int)==int(player_id)))
+        got = set(df.loc[m, "metric_id"].astype(str).str.upper().tolist())
+        return needed.issubset(got)
+    except Exception:
+        return False
+
+def has_funcoes_for(avaliador: str, ano:int, mes:int, player_id:int) -> bool:
+    try:
+        df = funcoes_all
+        if df.empty:
+            return False
+        m = (
+            (df.get("avaliador","").astype(str)==str(avaliador)) &
+            (df.get("ano","")==ano) &
+            (df.get("mes","")==mes) &
+            (df.get("player_id","")==player_id)
+        )
+        return bool(m.any())
+    except Exception:
+        return False
+
 def completed_for_player(pid:int, pcat:str)->bool:
     in_sheet_metrics = is_completed_for_player(aval_all, metrics, perfil, ano, mes, pid, pcat)
     in_sheet_funcoes = has_funcoes_for(perfil, ano, mes, pid)
@@ -654,7 +670,8 @@ for _, row in players.iterrows():
             st.markdown("</div>", unsafe_allow_html=True)
         with c2:
             st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
-            if st.button(label, key=f"sel_{pid}"): selecionado_id = pid
+            if st.button(label, key=f"sel_{pid}"):
+                selecionado_id = pid
             st.markdown("</div>", unsafe_allow_html=True)
         with c3:
             done = completed_for_player(pid, str(row["category"]).upper())
@@ -681,7 +698,7 @@ with col1:
             f"<span class='player-name'>{sel['nome']}</span>"
             f"</div>",
             unsafe_allow_html=True
-)
+        )
         st.image(foto_path_for(int(sel["player_id"]), 220), width=220, clamp=True)
 
     st.markdown("### Formulário de Avaliação")
@@ -724,14 +741,13 @@ with col1:
 
     prev_funcoes = []
     try:
-        fun_df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
+        fun_df = funcoes_all
         if not fun_df.empty:
-            fun_df.columns = [c.strip().lower() for c in fun_df.columns]
             mf = (
-                (fun_df.get("ano", "").astype(str) == str(ano)) &
-                (fun_df.get("mes", "").astype(str) == str(mes)) &
+                (fun_df.get("ano", 0)==ano) &
+                (fun_df.get("mes", 0)==mes) &
                 (fun_df.get("avaliador", "").astype(str) == str(perfil)) &
-                (fun_df.get("player_id", "").astype(str) == str(int(sel["player_id"])))
+                (fun_df.get("player_id", 0)==int(sel["player_id"]))
             )
             if mf.any():
                 last = fun_df.loc[mf].iloc[-1]
@@ -740,6 +756,20 @@ with col1:
         pass
 
 st.markdown("### Posições em que apresenta domínio funcional")
+
+# Catálogo local (CSV) apenas para rótulos de multiselect (mantido do teu código)
+FUNCOES_CSV = os.path.join("data", "funcoes.csv")
+@st.cache_data
+def load_funcoes_catalogo_local():
+    try:
+        df = pd.read_csv(FUNCOES_CSV)
+        if "funcao" not in df.columns:
+            return []
+        return df["funcao"].dropna().unique().tolist()
+    except Exception:
+        return []
+
+funcoes = pd.DataFrame({"funcao": load_funcoes_catalogo_local()})
 
 if funcoes.empty:
     st.warning("Nenhuma função encontrada em data/funcoes.csv.")
@@ -781,7 +811,6 @@ else:
         if rows:
             save_avaliacoes_bulk(rows)
 
-        # Funções obrigatórias
         if len(funcoes_escolhidas) == 0:
             st.error("Selecione pelo menos uma Função antes de submeter.")
             st.stop()
@@ -803,43 +832,39 @@ else:
     st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
 
 # ======================
-# DASHBOARD DO ADMIN
+# DASHBOARD DO ADMIN (médias ponderadas)
 # ======================
 if perfil == "Administrador":
     st.markdown("## Dashboard do Administrador")
 
-    # Jogador selecionado (vem da sidebar)
-    pid = int(selected_player)  # se o teu var tiver outro nome, ajusta aqui
-    sel = players.loc[players["id"]==pid].iloc[0]
-    player_group = str(sel.get("group") or sel.get("category")).upper()
+    pid = int(selecionado_id)
+    player_group = sel_cat
 
-    # Períodos
     ano_sel = int(ano); mes_sel = int(mes)
     ano_prev, mes_prev = prev_period(ano_sel, mes_sel)
 
-    # --- Médias por família (mês atual e anterior) ---
-    fis_now  = family_clean_mean(aval_all, metrics, ano_sel, mes_sel, pid, "FISICO",      player_group)
-    men_now  = family_clean_mean(aval_all, metrics, ano_sel, mes_sel, pid, "MENTAL",     player_group)
-    esp_now  = family_clean_mean(aval_all, metrics, ano_sel, mes_sel, pid, "ESPECIFICO", player_group)
+    # Médias ponderadas por família (mês atual e anterior)
+    fis_now  = family_weighted_mean(aval_all, weights_df, metrics, ano_sel, mes_sel, pid, "FISICO",      player_group)
+    men_now  = family_weighted_mean(aval_all, weights_df, metrics, ano_sel, mes_sel, pid, "MENTAL",     player_group)
+    esp_now  = family_weighted_mean(aval_all, weights_df, metrics, ano_sel, mes_sel, pid, "ESPECIFICO", player_group)
 
-    fis_prv  = family_clean_mean(aval_all, metrics, ano_prev, mes_prev, pid, "FISICO",      player_group)
-    men_prv  = family_clean_mean(aval_all, metrics, ano_prev, mes_prev, pid, "MENTAL",     player_group)
-    esp_prv  = family_clean_mean(aval_all, metrics, ano_prev, mes_prev, pid, "ESPECIFICO", player_group)
+    fis_prv  = family_weighted_mean(aval_all, weights_df, metrics, ano_prev, mes_prev, pid, "FISICO",      player_group)
+    men_prv  = family_weighted_mean(aval_all, weights_df, metrics, ano_prev, mes_prev, pid, "MENTAL",     player_group)
+    esp_prv  = family_weighted_mean(aval_all, weights_df, metrics, ano_prev, mes_prev, pid, "ESPECIFICO", player_group)
 
-    # --- Standalone ---
-    lsc_now  = standalone_clean_mean(aval_all, ano_sel, mes_sel, pid, "perfil_lsc")
-    pot_now  = standalone_clean_mean(aval_all, ano_sel, mes_sel, pid, "potencial")
+    # Standalone ponderado
+    lsc_now  = standalone_weighted_mean(aval_all, weights_df, ano_sel, mes_sel, pid, "ENC_PERFIL")
+    pot_now  = standalone_weighted_mean(aval_all, weights_df, ano_sel, mes_sel, pid, "POT_FUT")
 
     # Média Global (3 famílias) + etiqueta final (letra + sufixo do potencial)
     medias = [x for x in [fis_now, men_now, esp_now] if x is not None]
     media_global = float(np.mean(medias)) if medias else None
     etiqueta = f"{letter_grade(media_global)}{potential_suffix(pot_now)}"
 
-    # Versatilidade (a partir das funções consolidadas por maioria simples)
+    # Versatilidade
     fun_set = consolidate_functions(funcoes_all, ano_sel, mes_sel, pid)
     vers = versatility_grade(fun_set)
 
-    # ------ KPIs ------
     c1,c2,c3,c4,c5,c6,c7 = st.columns(7)
     c1.metric("Versatilidade", vers)
     c2.metric("Perfil LSC",    letter_grade(lsc_now))
@@ -851,125 +876,64 @@ if perfil == "Administrador":
 
     st.divider()
 
-    # ------ Radares (mês vs mês-1) ------
+    # Radares (mês vs mês-1) com ponderação
     def labels_vals_for_family(family:str):
-        if family=="ESPECIFICO":
-            mask = (metrics["family"]=="ESPECIFICO") & (metrics["group"]==player_group)
-        else:
-            mask = (metrics["family"]==family)
-        mlist = metrics.loc[mask].sort_values("ordem")["metric_key"].tolist()
-        # label amigável: se existir coluna 'label' em metrics
-        if "label" in metrics.columns:
-            labels = [metrics.set_index("metric_key").loc[k]["label"] for k in mlist]
-        else:
-            labels = mlist
-        now = [metric_clean_mean(aval_all, ano_sel, mes_sel, pid, k) for k in mlist]
-        prv = [metric_clean_mean(aval_all, ano_prev, mes_prev, pid, k) for k in mlist]
-        now = [v if v is not None else 0 for v in now]
-        prv = [v if v is not None else 0 for v in prv]
+        ids = get_metric_ids_for_family(metrics, player_group, family)
+        # labels (amigáveis)
+        labels = []
+        for mid in ids:
+            lab = metrics.loc[metrics["metric_id"]==mid, "label"]
+            labels.append(lab.iloc[0] if not lab.empty else mid)
+        now = [standalone_weighted_mean(aval_all, weights_df, ano_sel, mes_sel, pid, mid) or 0 for mid in ids]
+        prv = [standalone_weighted_mean(aval_all, weights_df, ano_prev, mes_prev, pid, mid) or 0 for mid in ids]
         return labels, now, prv
+
+    def radar_two_traces(title, labels, vals_now, vals_prev):
+        cat = labels + (labels[:1] if labels else [])
+        now = vals_now + (vals_now[:1] if vals_now else [])
+        prv = vals_prev + (vals_prev[:1] if vals_prev else [])
+        fig = go.Figure()
+        if any(vals_prev):
+            fig.add_trace(go.Scatterpolar(r=prv, theta=cat, name="Mês anterior",
+                                          line=dict(color="#c6c6c6",width=2)))
+        if any(vals_now):
+            fig.add_trace(go.Scatterpolar(r=now, theta=cat, name="Atual",
+                                          line=dict(color="#d22222",width=3)))
+        fig.update_layout(
+            title=title, showlegend=True,
+            polar=dict(radialaxis=dict(range=[0,4], tickvals=[1,2,3,4])),
+            margin=dict(l=10,r=10,t=40,b=10), height=380
+        )
+        return fig
 
     colA,colB,colC = st.columns(3)
     lbl, vnow, vprv = labels_vals_for_family("FISICO")
-    colA.plotly_chart(radar_two_traces("Radar Físico", lbl, vnow, vprv), use_container_width=True)
+    colA.plotly_chart(radar_two_traces("Radar Físico (ponderado)", lbl, vnow, vprv), use_container_width=True)
 
     lbl, vnow, vprv = labels_vals_for_family("MENTAL")
-    colB.plotly_chart(radar_two_traces("Radar Mental", lbl, vnow, vprv), use_container_width=True)
+    colB.plotly_chart(radar_two_traces("Radar Mental (ponderado)", lbl, vnow, vprv), use_container_width=True)
 
     lbl, vnow, vprv = labels_vals_for_family("ESPECIFICO")
     pretty_group = player_group.title() if isinstance(player_group,str) else str(player_group)
-    colC.plotly_chart(radar_two_traces(f"Radar Específico ({pretty_group})", lbl, vnow, vprv), use_container_width=True)
+    colC.plotly_chart(radar_two_traces(f"Radar Específico (ponderado) — {pretty_group}", lbl, vnow, vprv), use_container_width=True)
 
-    st.caption("A linha cinza representa o mês anterior; a vermelha, o mês selecionado.")
+    st.caption("A linha cinza representa o mês anterior; a vermelha, o mês selecionado. Médias ponderadas 60/40 ET/DD (com trimming agregado).")
 
-    # (Opcional) tabela de auditoria
-    with st.expander("Ver tabela detalhada (métricas e médias limpas)"):
-        rows = []
-        for fam in ["FISICO","MENTAL","ESPECIFICO"]:
-            if fam=="ESPECIFICO":
-                mask = (metrics["family"]=="ESPECIFICO") & (metrics["group"]==player_group)
-            else:
-                mask = (metrics["family"]==fam)
-            for k in metrics.loc[mask].sort_values("ordem")["metric_key"].tolist():
-                label_k = metrics.set_index("metric_key").loc[k]["label"] if "label" in metrics.columns else k
-                rows.append({
-                    "Família": fam,
-                    "Métrica": label_k,
-                    "Média (mês)": metric_clean_mean(aval_all, ano_sel, mes_sel, pid, k),
-                    "Média (mês-1)": metric_clean_mean(aval_all, ano_prev, mes_prev, pid, k),
-                })
-        import pandas as pd
-        st.dataframe(pd.DataFrame(rows), use_container_width=True)
-
-# ---- COL2: Instruções + Painel Admin (Radares)
+# ---- COL2: Instruções
 with col2:
     st.markdown("#### Instruções")
     st.markdown("""
     <ol style="line-height:1.7; font-size:.95rem;">
       <li>Escolha o seu <strong>Nome de Utilizador</strong> na barra lateral.</li>
-      <li>Escolha o <strong>jogador</strong>, mais abaixo na barra lateral.</li>
+      <li>Escolha o <strong>jogador</strong> na barra lateral.</li>
       <li>Preencha todos os <strong>parâmetros obrigatórios</strong> (1–4).</li>
       <li>Selecione as <strong>Funções</strong> (pelo menos uma).</li>
-      <li>Clique <strong>Submeter avaliação</strong></li>
+      <li>Clique <strong>Submeter avaliação</strong>.</li>
     </ol>
     <p style="font-style: italic; font-size:.9rem;">
       As avaliações só são visíveis ao <strong>Administrador</strong>. O mês fecha quando os <strong>25/25</strong> estiverem completos.
     </p>
     """, unsafe_allow_html=True)
-
-    if perfil == "Administrador":
-        st.markdown("---")
-        st.markdown("#### Painel do Administrador — Radar do Jogador Selecionado")
-
-        df = load_avaliacoes()
-        if not df.empty:
-            try:
-                m = ((df["ano"].astype(int)==ano) &
-                     (df["mes"].astype(int)==mes) &
-                     (df["player_id"].astype(int)==int(sel["player_id"])))
-                d = df.loc[m].copy()
-            except Exception:
-                d = pd.DataFrame()
-        else:
-            d = pd.DataFrame()
-
-        if d.empty:
-            st.info("Ainda não há avaliações para este jogador neste mês.")
-        else:
-            d["score"] = pd.to_numeric(d["score"], errors="coerce")
-            agg = (d.groupby("metric_id")["score"]
-                     .apply(lambda s: (lambda vals: (sum(vals)-min(vals)-max(vals))/(len(vals)-2) if len(vals)>=3 else (sum(vals)/len(vals)))([float(x) for x in s.dropna().tolist()]))
-                     .reset_index().rename(columns={"score":"tm"}))
-
-            md = metrics[["metric_id","label","group","category"]].drop_duplicates()
-            merged = agg.merge(md, on="metric_id", how="left")
-
-            def radar_plot(df_sub: pd.DataFrame, title: str):
-                if df_sub.empty:
-                    st.info(f"Sem dados para o radar: {title}")
-                    return
-                df_sub = df_sub.dropna(subset=["tm"]).sort_values("label")
-                if df_sub.empty:
-                    st.info(f"Sem dados para o radar: {title}")
-                    return
-                fig = go.Figure()
-                fig.add_trace(go.Scatterpolar(
-                    r=df_sub["tm"].tolist(),
-                    theta=df_sub["label"].tolist(),
-                    fill='toself',
-                    name=title
-                ))
-                fig.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=[1,4])),
-                    showlegend=False,
-                    margin=dict(l=20,r=20,t=30,b=20),
-                    title=title
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-            radar_plot(merged[merged["group"]=="fisicos"], "Radar Físico")
-            radar_plot(merged[merged["group"]=="mentais"], "Radar Mental")
-            radar_plot(merged[(merged["group"]=="categoria") & (merged["category"]==sel_cat)], f"Radar Específico ({sel_cat})")
 
     st.markdown("---")
     st.caption("© Leixões SC")
