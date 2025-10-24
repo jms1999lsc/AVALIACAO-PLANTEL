@@ -687,158 +687,178 @@ sel_cat = str(sel["category"]).upper()
 # =========================
 col1, col2 = st.columns([1.2, 2.2], gap="large")
 
-# ---- COL1: Jogador + Formulário
+# ---- COL1: Jogador + (Formulário só para não-admin)
 with col1:
-    st.markdown("#### Jogador selecionado")
-    _, mid, _ = st.columns([1,2,1])
-    with mid:
-        st.markdown(
-            f"<div class='player-hero-title'>"
-            f"<span class='player-num'>#{int(sel['numero'])}</span>"
-            f"<span class='player-name'>{sel['nome']}</span>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-        st.image(foto_path_for(int(sel["player_id"]), 220), width=220, clamp=True)
-
-    st.markdown("### Formulário de Avaliação")
-
-    secs = metrics_for_category(metrics, sel_cat)
-
-    def nota(label: str, key: str):
-        opcoes = ["—", 1, 2, 3, 4]
-        escolha = st.radio(label, opcoes, horizontal=True, index=0, key=key)
-        return None if escolha == "—" else escolha
-
-    respostas = {}
-
-    if not secs["enc_pot"].empty:
-        st.markdown("##### Encaixe & Potencial")
-        for _, m in secs["enc_pot"].iterrows():
-            mid = m["metric_id"]; lab = m["label"]
-            respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
-
-    if not secs["fisicos"].empty:
-        st.markdown("##### Parâmetros Físicos")
-        for _, m in secs["fisicos"].iterrows():
-            mid = m["metric_id"]; lab = m["label"]
-            respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
-
-    if not secs["mentais"].empty:
-        st.markdown("##### Parâmetros Mentais")
-        for _, m in secs["mentais"].iterrows():
-            mid = m["metric_id"]; lab = m["label"]
-            respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
-
-    if not secs["especificos"].empty:
-        st.markdown(f"##### Específicos da Posição ({sel_cat})")
-        for _, m in secs["especificos"].iterrows():
-            mid = m["metric_id"]; lab = m["label"]
-            respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
-
-    # ===== Funções (obrigatório, multiselect antigo) =====
-    funcoes_options = load_funcoes_catalogo()
-
-    prev_funcoes = []
-    try:
-        fun_df = funcoes_all
-        if not fun_df.empty:
-            mf = (
-                (fun_df.get("ano", 0)==ano) &
-                (fun_df.get("mes", 0)==mes) &
-                (fun_df.get("avaliador", "").astype(str) == str(perfil)) &
-                (fun_df.get("player_id", 0)==int(sel["player_id"]))
+    if perfil == "Administrador":
+        # Admin não vê formulário aqui
+        st.markdown("#### Jogador Selecionado")
+        _, mid, _ = st.columns([1,2,1])
+        with mid:
+            st.markdown(
+                f"<div class='player-hero-title'>"
+                f"<span class='player-num'>#{int(sel['numero'])}</span>"
+                f"<span class='player-name'>{sel['nome']}</span>"
+                f"</div>",
+                unsafe_allow_html=True
             )
-            if mf.any():
-                last = fun_df.loc[mf].iloc[-1]
-                prev_funcoes = [s.strip() for s in str(last.get("funcoes", "")).split(";") if s.strip()]
-    except Exception:
-        pass
+            st.image(foto_path_for(int(sel["player_id"]), 220), width=220, clamp=True)
+        st.info("O Administrador vê apenas o Dashboard à direita.")
+    else:
+        # Utilizadores (avaliadores) vêem o formulário completo
+        st.markdown("#### Jogador Selecionado")
+        _, mid, _ = st.columns([1,2,1])
+        with mid:
+            st.markdown(
+                f"<div class='player-hero-title'>"
+                f"<span class='player-num'>#{int(sel['numero'])}</span>"
+                f"<span class='player-name'>{sel['nome']}</span>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+            st.image(foto_path_for(int(sel["player_id"]), 220), width=220, clamp=True)
 
-st.markdown("### Posições em que apresenta domínio funcional")
+        st.markdown("### Formulário de Avaliação")
 
-# Catálogo local (CSV) apenas para rótulos de multiselect (mantido do teu código)
-FUNCOES_CSV = os.path.join("data", "funcoes.csv")
-@st.cache_data
-def load_funcoes_catalogo_local():
-    try:
-        df = pd.read_csv(FUNCOES_CSV)
-        if "funcao" not in df.columns:
-            return []
-        return df["funcao"].dropna().unique().tolist()
-    except Exception:
-        return []
+        secs = metrics_for_category(metrics, sel_cat)
 
-funcoes = pd.DataFrame({"funcao": load_funcoes_catalogo_local()})
+        def nota(label: str, key: str):
+            opcoes = ["—", 1, 2, 3, 4]
+            escolha = st.radio(label, opcoes, horizontal=True, index=0, key=key)
+            return None if escolha == "—" else escolha
 
-if funcoes.empty:
-    st.warning("Nenhuma função encontrada em data/funcoes.csv.")
-    funcoes_escolhidas = []
-else:
-    funcoes_disp = funcoes["funcao"].dropna().unique().tolist()
-    funcoes_escolhidas = st.multiselect(
-        "Escolha uma ou mais posições:",
-        options=funcoes_disp,
-        default=[],
-    )
+        respostas = {}
 
-    obs = st.text_area("Observações")
+        if not secs["enc_pot"].empty:
+            st.markdown("##### Encaixe & Potencial")
+            for _, m in secs["enc_pot"].iterrows():
+                mid = m["metric_id"]; lab = m["label"]
+                respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-    obrig = pd.concat([
-        secs["enc_pot"][secs["enc_pot"]["obrigatorio"]],
-        secs["fisicos"][secs["fisicos"]["obrigatorio"]],
-        secs["mentais"][secs["mentais"]["obrigatorio"]],
-        secs["especificos"][secs["especificos"]["obrigatorio"]],
-    ], ignore_index=True)["metric_id"].tolist()
+        if not secs["fisicos"].empty:
+            st.markdown("##### Parâmetros Físicos")
+            for _, m in secs["fisicos"].iterrows():
+                mid = m["metric_id"]; lab = m["label"]
+                respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-    faltam = [mid for mid in obrig if (respostas.get(mid) is None)]
-    can_submit = (len(faltam)==0)
+        if not secs["mentais"].empty:
+            st.markdown("##### Parâmetros Mentais")
+            for _, m in secs["mentais"].iterrows():
+                mid = m["metric_id"]; lab = m["label"]
+                respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-    if st.button("Submeter avaliação", type="primary", disabled=not can_submit):
-        ts = datetime.utcnow().isoformat()
-        base = dict(
-            timestamp=ts, ano=ano, mes=mes, avaliador=perfil,
-            player_id=int(sel["player_id"]), player_numero=int(sel["numero"]), player_nome=sel["nome"],
-            player_category=sel_cat, observacoes=obs.replace("\n"," ").strip()
-        )
-        rows = []
-        for mid, val in respostas.items():
-            if val is None: continue
-            rd = base.copy()
-            rd["metric_id"] = str(mid).upper()
-            rd["score"] = int(val)
-            rows.append(rd)
-        if rows:
-            save_avaliacoes_bulk(rows)
+        if not secs["especificos"].empty:
+            st.markdown(f"##### Específicos da Posição ({sel_cat})")
+            for _, m in secs["especificos"].iterrows():
+                mid = m["metric_id"]; lab = m["label"]
+                respostas[mid] = nota(lab, f"m_{mid}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-        if len(funcoes_escolhidas) == 0:
-            st.error("Selecione pelo menos uma Função antes de submeter.")
-            st.stop()
+        # ===== Funções (obrigatório, multiselect) =====
+        funcoes_options = load_funcoes_catalogo()
+
+        prev_funcoes = []
+        try:
+            fun_df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
+            if not fun_df.empty:
+                fun_df.columns = [c.strip().lower() for c in fun_df.columns]
+                mf = (
+                    (fun_df.get("ano", "").astype(str) == str(ano)) &
+                    (fun_df.get("mes", "").astype(str) == str(mes)) &
+                    (fun_df.get("avaliador", "").astype(str) == str(perfil)) &
+                    (fun_df.get("player_id", "").astype(str) == str(int(sel["player_id"])))
+                )
+                if mf.any():
+                    last = fun_df.loc[mf].iloc[-1]
+                    prev_funcoes = [s.strip() for s in str(last.get("funcoes", "")).split(";") if s.strip()]
+        except Exception:
+            pass
+
+        st.markdown("### Posições em que apresenta domínio funcional")
+        if funcoes.empty:
+            st.warning("Nenhuma função encontrada em data/funcoes.csv.")
+            funcoes_escolhidas = []
         else:
-            funcoes_str = "; ".join(funcoes_escolhidas)
-            save_funcoes_tag(ano, mes, perfil, int(sel["player_id"]), funcoes_str)
+            funcoes_disp = funcoes["funcao"].dropna().unique().tolist()
+            funcoes_escolhidas = st.multiselect(
+                "Escolha uma ou mais posições:",
+                options=funcoes_disp,
+                default=[],
+            )
 
-        st.session_state["session_completed"].add((perfil,ano,mes,int(sel["player_id"])))
-        st.success("✅ Avaliação registada.")
-        st.rerun()
+            obs = st.text_area("Observações")
 
-    if not can_submit:
-        st.info("⚠️ Responda todas as métricas obrigatórias (1–4) antes de submeter.")
+            obrig = pd.concat([
+                secs["enc_pot"][secs["enc_pot"]["obrigatorio"]],
+                secs["fisicos"][secs["fisicos"]["obrigatorio"]],
+                secs["mentais"][secs["mentais"]["obrigatorio"]],
+                secs["especificos"][secs["especificos"]["obrigatorio"]],
+            ], ignore_index=True)["metric_id"].tolist()
 
-    # Estado do mês
-    aval_all = load_avaliacoes()
-    completos = [int(r["player_id"]) for _, r in players.iterrows()
-                 if completed_for_player(int(r["player_id"]), str(r["category"]).upper())]
-    st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
+            faltam = [mid for mid in obrig if (respostas.get(mid) is None)]
+            can_submit = (len(faltam)==0)
+
+            if st.button("Submeter avaliação", type="primary", disabled=not can_submit):
+                ts = datetime.utcnow().isoformat()
+                base = dict(
+                    timestamp=ts, ano=ano, mes=mes, avaliador=perfil,
+                    player_id=int(sel["player_id"]), player_numero=int(sel["numero"]), player_nome=sel["nome"],
+                    player_category=sel_cat, observacoes=obs.replace("\n"," ").strip()
+                )
+                rows = []
+                for mid, val in respostas.items():
+                    if val is None: continue
+                    rd = base.copy()
+                    rd["metric_id"] = str(mid).upper()
+                    rd["score"] = int(val)
+                    rows.append(rd)
+                if rows:
+                    save_avaliacoes_bulk(rows)
+
+                # Funções obrigatórias
+                if len(funcoes_escolhidas) == 0:
+                    st.error("Selecione pelo menos uma Função antes de submeter.")
+                    st.stop()
+                else:
+                    funcoes_str = "; ".join(funcoes_escolhidas)
+                    save_funcoes_tag(ano, mes, perfil, int(sel["player_id"]), funcoes_str)
+
+                # força refresh a partir do Sheets
+                try:
+                    load_avaliacoes.clear()
+                    read_sheet.clear()
+                    load_funcoes_sheet.clear()
+                except Exception:
+                    pass
+
+                st.session_state["session_completed"].add((perfil,ano,mes,int(sel["player_id"])))
+                st.success("✅ Avaliação registada.")
+                st.rerun()
+
+            if not can_submit:
+                st.info("⚠️ Responda todas as métricas obrigatórias (1–4) antes de submeter.")
+
+            # Estado do mês
+            aval_all = load_avaliacoes()
+            funcoes_sheet_df = load_funcoes_sheet()
+            completed_ids_sheet = []
+            for _, r in players.iterrows():
+                pid_chk  = int(r["player_id"])
+                pcat_chk = str(r["category"]).upper()
+                if is_complete_in_sheet(aval_all, funcoes_sheet_df, perfil, ano, mes, pid_chk, pcat_chk):
+                    completed_ids_sheet.append(pid_chk)
+            st.write(f"**Estado do mês:** {len(completed_ids_sheet)}/{len(players)} jogadores avaliados.")
 
 # ======================
-# DASHBOARD DO ADMIN (médias ponderadas)
+# DASHBOARD DO ADMIN
 # ======================
+
 if perfil == "Administrador":
     st.markdown("## Dashboard do Administrador")
 
+    # Jogador selecionado (vem da sidebar)
     pid = int(selecionado_id)
-    player_group = sel_cat
+    sel = players.loc[players["player_id"]==pid].iloc[0]
+    player_group = str(sel.get("category")).upper()
+
 
     ano_sel = int(ano); mes_sel = int(mes)
     ano_prev, mes_prev = prev_period(ano_sel, mes_sel)
@@ -862,7 +882,8 @@ if perfil == "Administrador":
     etiqueta = f"{letter_grade(media_global)}{potential_suffix(pot_now)}"
 
     # Versatilidade
-    fun_set = consolidate_functions(funcoes_all, ano_sel, mes_sel, pid)
+    funcoes_sheet_df = load_funcoes_sheet()
+    fun_set = consolidate_functions(funcoes_sheet_df, ano_sel, mes_sel, pid)
     vers = versatility_grade(fun_set)
 
     c1,c2,c3,c4,c5,c6,c7 = st.columns(7)
