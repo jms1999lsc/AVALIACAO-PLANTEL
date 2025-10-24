@@ -6,7 +6,11 @@ from datetime import datetime
 import streamlit as st
 import pandas as pd
 import numpy as np
+from typing import Dict, Tuple
 import plotly.graph_objects as go
+
+W_ET =0.60
+W_DD =0.40
 
 # ====================================
 # CONFIGURAÇÕES GERAIS DE AMBIENTE
@@ -243,6 +247,61 @@ def append_rows(tab: str, rows: list[list]) -> bool:
         return True
     except Exception:
         return False
+
+@st.cache_data
+def load_weights_df() -> pd.DataFrame:
+    try:
+        # TENTA LER DA GOOGLE SHEET (ajusta para o teu helper se for diferente)
+        # Ex.: df = gs_read_df("weights")
+        sh = gs_client.open_by_key(SPREADSHEET_ID)  # usa as tuas variáveis existentes
+        ws = sh.worksheet("weights")
+        df = pd.DataFrame(ws.get_all_records())
+    except Exception:
+        # fallback local opcional
+        path_local = os.path.join("data", "weights.csv")
+        if os.path.exists(path_local):
+            df = pd.read_csv(path_local)
+        else:
+            df = pd.DataFrame(columns=["perfil","group","w_in_group","ativo"])
+
+    # normalização mínima
+    if not df.empty:
+        cols = {c.lower().strip(): c for c in df.columns}
+        rename = {}
+        if "perfil" in cols: rename[cols["perfil"]] = "perfil"
+        if "group" in cols: rename[cols["group"]] = "group"
+        if "w_in_group" in cols: rename[cols["w_in_group"]] = "w_in_group"
+        if "ativo" in cols: rename[cols["ativo"]] = "ativo"
+        df = df.rename(columns=rename)
+
+        # sanear
+        if "ativo" in df.columns:
+            df["ativo"] = df["ativo"].astype(str).str.upper().isin(["TRUE","1","YES","SIM"])
+        else:
+            df["ativo"] = True
+        if "w_in_group" in df.columns:
+            df["w_in_group"] = pd.to_numeric(df["w_in_group"], errors="coerce")
+        if "group" in df.columns:
+            df["group"] = df["group"].str.upper().str.strip()
+    return df
+
+weights_df = load_weights_df()
+
+def weights_maps(df: pd.DataFrame) -> Tuple[Dict[str, str], Dict[str, float]]:
+    """
+    devolve:
+      map_group[perfil] -> 'ET'/'DD'
+      map_wrole[perfil] -> peso dentro do grupo (float)
+    apenas para rows ativo == True
+    """
+    df2 = df[df.get("ativo", True) == True].copy()
+    map_group = {r["perfil"]: r["group"] for _, r in df2.iterrows() if pd.notna(r.get("perfil"))}
+    map_wrole = {r["perfil"]: float(r["w_in_group"]) for _, r in df2.iterrows()
+                 if pd.notna(r.get("perfil")) and pd.notna(r.get("w_in_group"))}
+    return map_group, map_wrole
+
+MAP_GROUP_BY_PERFIL, MAP_WROLE_BY_PERFIL = weights_maps(weights_df)
+
 
 # ==========================
 # PATHS FALLBACK CSV
@@ -489,26 +548,84 @@ def metric_clean_mean(aval_df, ano:int, mes:int, pid:int, metric_key:str):
     vals = df[col].tolist() if col else []
     return clean_mean(vals)
 
-def family_clean_mean(aval_df, metrics_df, ano:int, mes:int, pid:int, family:str, player_group:str):
+def weighted_metric_mean(aval_df: pd.DataFrame, ano:int, mes:int, pid:int, metric_key:str) -> float | None:
+    """
+    1) filtra avaliações da métrica;
+    2) trimming no agregado (corta 1 mínima + 1 máxima se houver amostra suficiente);
+    3) média ponderada: dentro de cada grupo (weights de perfil re-normalizados para presentes),
+       e combinação final ET(60%)/DD(40%); se faltar um grupo, reescala para 100%.
+    """
+    if aval_df is None or aval_df.empty:
+        return None
+
+    df = aval_df[(aval_df["ano"]==ano) & (aval_df["mes"]==mes) &
+                 (aval_df["player_id"]==pid) & (aval_df["metric_key"]==metric_key)].copy()
+    if df.empty:
+        return None
+
+    # mapear perfil -> grupo e peso dentro do grupo
+    df["perfil_norm"] = df.apply(lambda r: str(r.get("avaliador") or r.get("perfil") or r.get("user") or ""), axis=1)
+    df["group"] = df["perfil_norm"].map(MAP_GROUP_BY_PERFIL)
+    df["w_in_group"] = df["perfil_norm"].map(MAP_WROLE_BY_PERFIL)
+    df["nota"] = pd.to_numeric(df.get("nota", df.get("valor", None)), errors="coerce")
+
+    # filtrar só linhas válidas
+    df = df.dropna(subset=["nota","group","w_in_group"])
+    if df.empty:
+        return None
+
+    # ---- TRIMMING NO AGREGADO ----
+    df_sorted = df.sort_values("nota").reset_index(drop=True)
+    n = len(df_sorted)
+    if n >= 7 or (n >= 5 and (n-2) >= 3):
+        df_trim = df_sorted.iloc[1:-1].copy()
+    else:
+        df_trim = df_sorted
+
+    if df_trim.empty:
+        return None
+
+    # ---- MÉDIA POR GRUPO (re-normalizando para perfis presentes) ----
+    result_by_group = {}
+    for g, w_group in [("ET", W_ET), ("DD", W_DD)]:
+        part = df_trim[df_trim["group"]==g]
+        if part.empty:
+            continue
+        w = part["w_in_group"].astype(float).values
+        r = part["nota"].astype(float).values
+        sw = np.sum(w)
+        if sw <= 0:
+            continue
+        r_group = float(np.sum(w * r) / sw)
+        result_by_group[g] = r_group
+
+    if not result_by_group:
+        return None
+
+    # combinar ET/DD com 60/40; se só houver um grupo, reescala para 100%
+    if "ET" in result_by_group and "DD" in result_by_group:
+        return result_by_group["ET"]*W_ET + result_by_group["DD"]*W_DD
+    elif "ET" in result_by_group:
+        return result_by_group["ET"]
+    else:
+        return result_by_group["DD"]
+
+def family_weighted_mean(aval_df, metrics_df, ano:int, mes:int, pid:int, family:str, player_group:str) -> float | None:
     if family == "ESPECIFICO":
-        mask = (metrics_df["family"]=="ESPECIFICO") & (metrics_df["group"]==player_group)
+        col_group = "group_norm" if "group_norm" in metrics_df.columns else "group"
+        mask = (metrics_df["family"]=="ESPECIFICO") & (metrics_df[col_group]==player_group)
     else:
         mask = (metrics_df["family"]==family)
     keys = metrics_df.loc[mask].sort_values("ordem")["metric_key"].tolist()
     vals = []
     for k in keys:
-        mm = metric_clean_mean(aval_df, ano, mes, pid, k)
-        if mm is not None:
-            vals.append(mm)
+        wm = weighted_metric_mean(aval_df, ano, mes, pid, k)
+        if wm is not None:
+            vals.append(wm)
     return float(np.mean(vals)) if vals else None
 
-def standalone_clean_mean(aval_df, ano:int, mes:int, pid:int, field:str):
-    # field: "perfil_lsc" | "potencial"
-    df = aval_df[(aval_df["ano"]==ano) & (aval_df["mes"]==mes) &
-                 (aval_df["player_id"]==pid) & (aval_df["metric_key"]==field)]
-    col = "nota" if "nota" in df.columns else ("valor" if "valor" in df.columns else None)
-    vals = df[col].tolist() if col else []
-    return clean_mean(vals)
+def standalone_weighted_mean(aval_df, ano:int, mes:int, pid:int, field:str) -> float | None:
+    return weighted_metric_mean(aval_df, ano, mes, pid, field)
 
 SETORES = {
     # Defesa
@@ -818,18 +935,18 @@ if perfil == "Administrador":
     ano_prev, mes_prev = prev_period(ano_sel, mes_sel)
 
     # --- Médias por família (mês atual e anterior) ---
-    fis_now  = family_clean_mean(aval_all, metrics, ano_sel, mes_sel, pid, "FISICO",      player_group)
-    men_now  = family_clean_mean(aval_all, metrics, ano_sel, mes_sel, pid, "MENTAL",     player_group)
-    esp_now  = family_clean_mean(aval_all, metrics, ano_sel, mes_sel, pid, "ESPECIFICO", player_group)
+    fis_now  = family_weighted_mean(aval_all, metrics, ano_sel, mes_sel, pid, "FISICO",      player_group)
+    men_now  = family_weighted_mean(aval_all, metrics, ano_sel, mes_sel, pid, "MENTAL",     player_group)
+    esp_now  = family_weighted_mean(aval_all, metrics, ano_sel, mes_sel, pid, "ESPECIFICO", player_group)
 
-    fis_prv  = family_clean_mean(aval_all, metrics, ano_prev, mes_prev, pid, "FISICO",      player_group)
-    men_prv  = family_clean_mean(aval_all, metrics, ano_prev, mes_prev, pid, "MENTAL",     player_group)
-    esp_prv  = family_clean_mean(aval_all, metrics, ano_prev, mes_prev, pid, "ESPECIFICO", player_group)
+    fis_prv  = family_weighted_mean(aval_all, metrics, ano_prev, mes_prev, pid, "FISICO",      player_group)
+    men_prv  = family_weighted_mean(aval_all, metrics, ano_prev, mes_prev, pid, "MENTAL",     player_group)
+    esp_prv  = family_weighted_mean(aval_all, metrics, ano_prev, mes_prev, pid, "ESPECIFICO", player_group)
 
     # --- Standalone ---
-    lsc_now  = standalone_clean_mean(aval_all, ano_sel, mes_sel, pid, "perfil_lsc")
-    pot_now  = standalone_clean_mean(aval_all, ano_sel, mes_sel, pid, "potencial")
-
+    lsc_now  = standalone_weighted_mean(aval_all, ano_sel, mes_sel, pid, "perfil_lsc")
+    pot_now  = standalone_weighted_mean(aval_all, ano_sel, mes_sel, pid, "potencial")
+    
     # Média Global (3 famílias) + etiqueta final (letra + sufixo do potencial)
     medias = [x for x in [fis_now, men_now, esp_now] if x is not None]
     media_global = float(np.mean(medias)) if medias else None
