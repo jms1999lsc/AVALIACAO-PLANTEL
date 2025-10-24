@@ -611,8 +611,8 @@ def weighted_metric_mean(aval_df: pd.DataFrame, ano:int, mes:int, pid:int, metri
     if aval_df is None or aval_df.empty:
         return None
 
-    df = aval_df[(aval_df["ano"]==ano) & (aval_df["mes"]==mes) &
-                 (aval_df["player_id"]==pid) & (aval_df["metric_key"]==metric_key)].copy()
+    df["perfil_norm"] = df.apply(lambda r: str(r.get("avaliador") or r.get("perfil") or r.get("user") or ""), axis=1)
+
     if df.empty:
         return None
 
