@@ -441,6 +441,34 @@ def load_funcoes_catalogo() -> list[str]:
                 return opts
     return FUNCOES_TAXONOMY_DEFAULT[:]
 
+def get_selected_player_id(players_df: pd.DataFrame) -> int:
+    """
+    Devolve o player_id selecionado com fallbacks:
+      1) st.session_state['selected_player']
+      2) st.session_state['selecionado_id']
+      3) primeiro jogador do DataFrame
+    """
+    # 1) novo estado (Admin)
+    if "selected_player" in st.session_state:
+        try:
+            return int(st.session_state["selected_player"])
+        except Exception:
+            pass
+    # 2) estado usado no avaliador
+    if "selecionado_id" in st.session_state:
+        try:
+            return int(st.session_state["selecionado_id"])
+        except Exception:
+            pass
+    # 3) fallback para o primeiro registo
+    if not players_df.empty:
+        if "player_id" in players_df.columns:
+            return int(players_df.iloc[0]["player_id"])
+        elif "id" in players_df.columns:
+            return int(players_df.iloc[0]["id"])
+    st.error("Não há jogadores disponíveis. Verifica o DataFrame 'players'.")
+    st.stop()
+
 # =========================
 # Helpers
 # =========================
@@ -771,7 +799,10 @@ for _, row in players.iterrows():
             st.markdown("</div>", unsafe_allow_html=True)
         with c2:
             st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
-            if st.button(label, key=f"sel_{pid}"): selecionado_id = pid
+            if st.button(label, key=f"sel_{pid}"):
+                # guarda o id selecionado em ambos (compatibilidade com o resto da app)
+                st.session_state["selecionado_id"] = int(pid)
+                st.session_state["selected_player"] = int(pid)   # <-- usado no Admin
             st.markdown("</div>", unsafe_allow_html=True)
         with c3:
             done = completed_for_player(pid, str(row["category"]).upper())
@@ -926,9 +957,20 @@ if perfil == "Administrador":
     st.markdown("## Dashboard do Administrador")
 
     # Jogador selecionado (vem da sidebar)
-    pid = int(selected_player)  # se o teu var tiver outro nome, ajusta aqui
-    sel = players.loc[players["id"]==pid].iloc[0]
-    player_group = str(sel.get("group") or sel.get("category")).upper()
+    pid = get_selected_player_id(players)
+    # recuperar a linha do jogador
+    if "player_id" in players.columns:
+        sel_row = players.loc[players["player_id"] == pid]
+    else:
+        sel_row = players.loc[players["id"] == pid]
+    
+    if sel_row.empty:
+        st.error("Jogador selecionado não encontrado na tabela 'players'.")
+        st.stop()
+    
+    sel = sel_row.iloc[0]
+    player_group_raw = str(sel.get("category") or sel.get("group") or "").strip()
+    player_group = normalize_group(player_group_raw)  # se já tens a função; senão usa .upper()
 
     # Períodos
     ano_sel = int(ano); mes_sel = int(mes)
