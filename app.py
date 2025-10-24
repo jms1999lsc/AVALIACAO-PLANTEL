@@ -726,9 +726,6 @@ fechos   = load_fechos()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"]=set()
 
-if st.session_state.get("perfil", "") == "":
-    st.warning("⚠️ Selecione o seu perfil na barra lateral para continuar.")
-    st.stop()
 
 # =========================
 # Sidebar — Branding + período + perfil + lista
