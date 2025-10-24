@@ -726,6 +726,10 @@ fechos   = load_fechos()
 if "session_completed" not in st.session_state:
     st.session_state["session_completed"]=set()
 
+if st.session_state.get("perfil", "") == "":
+    st.warning("⚠️ Selecione o seu perfil na barra lateral para continuar.")
+    st.stop()
+
 # =========================
 # Sidebar — Branding + período + perfil + lista
 # =========================
@@ -747,17 +751,32 @@ with st.sidebar:
 
     st.markdown("---")
     st.write("**Utilizador**")
-    PERFIS = [
-        "João Nuno Fonseca",
-        "Rúben Pinheiro",
-        "João Amorim",
-        "Tiago Castro",
-        "Rodrigo Weber",
-        "Pedro Campos",
-        "João Maria Silva",
+    # 1) define a lista de perfis reais
+    perfis_reais = [
+        "Treinador Principal",
+        "Treinador Adjunto 1",
+        "Treinador Adjunto 2",
+        "Treinador Adjunto 3",
+        "Diretor Executivo",
+        "Diretor Desportivo",
+        "Lead Scout",
         "Administrador",
     ]
-    perfil = st.selectbox("Perfil", PERFIS)
+
+    # 2) insere um item vazio no topo (valor real = ""), mas mostrado em branco
+    opcoes_perfil = [""] + perfis_reais
+
+    # 3) selectbox com a opção vazia por defeito
+    perfil = st.selectbox(
+        "Perfil",
+        options=opcoes_perfil,
+        index=0,  # fica na opção vazia ao abrir
+        format_func=lambda v: "" if v == "" else v,  # mostra em branco
+        key="perfil_select",
+    )
+
+    # 4) guarda em session_state para reutilizar noutros pontos (Admin etc.)
+    st.session_state["perfil"] = perfil
     if perfil=="Administrador":
         code = st.text_input("Código de acesso", type="password", value="")
         if code != "leixoes2025":
