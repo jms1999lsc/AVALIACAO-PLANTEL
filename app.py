@@ -657,17 +657,75 @@ def has_funcoes_for(avaliador: str, ano:int, mes:int, player_id:int) -> bool:
     except Exception:
         return False
 
-def completed_for_player(pid:int, pcat:str)->bool:
-    in_sheet_metrics = is_completed_for_player(aval_all, metrics, perfil, ano, mes, pid, pcat)
-    in_sheet_funcoes = has_funcoes_for(perfil, ano, mes, pid)
-    in_session = (perfil,ano,mes,pid) in st.session_state["session_completed"]
-    return (in_sheet_metrics and in_sheet_funcoes) or in_session
+# --- Leitura de 'funcoes' a partir do Sheets/CSV ---
+@st.cache_data(ttl=60)
+def load_funcoes_sheet() -> pd.DataFrame:
+    df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
+    if df.empty:
+        return pd.DataFrame(columns=["timestamp","ano","mes","avaliador","player_id","funcoes"])
+    df.columns = [c.strip().lower() for c in df.columns]
+    return df
 
-completos_ids = []
+def required_metric_ids_for_category(metrics_df: pd.DataFrame, cat: str) -> set[str]:
+    """Devolve o conjunto de metric_id obrigatórios para a categoria (posição) do jogador."""
+    sec = metrics_for_category(metrics_df, cat)
+    req = pd.concat(
+        [
+            sec["enc_pot"][sec["enc_pot"]["obrigatorio"]],
+            sec["fisicos"][sec["fisicos"]["obrigatorio"]],
+            sec["mentais"][sec["mentais"]["obrigatorio"]],
+            sec["especificos"][sec["especificos"]["obrigatorio"]],
+        ],
+        ignore_index=True,
+    )
+    if req.empty:
+        return set()
+    return set(req["metric_id"].astype(str).str.upper().tolist())
+
+def is_complete_in_sheet(av_df: pd.DataFrame, fn_df: pd.DataFrame,
+                         perfil: str, ano: int, mes: int,
+                         pid: int, cat: str) -> bool:
+    """True se TODAS as métricas obrigatórias + pelo menos 1 registo em 'funcoes' existirem no Sheets."""
+    req = required_metric_ids_for_category(metrics, cat)
+    if not req:
+        return False
+
+    # linhas do avaliador/ano/mes/jogador
+    m = (
+        (av_df.get("avaliador", "").astype(str) == str(perfil)) &
+        (av_df.get("ano", "").astype(str) == str(ano)) &
+        (av_df.get("mes", "").astype(str) == str(mes)) &
+        (av_df.get("player_id", "").astype(str) == str(pid))
+    )
+    got = set(av_df.loc[m, "metric_id"].astype(str).str.upper().tolist())
+    metrics_ok = req.issubset(got)
+
+    f = (
+        (fn_df.get("avaliador", "").astype(str) == str(perfil)) &
+        (fn_df.get("ano", "").astype(str) == str(ano)) &
+        (fn_df.get("mes", "").astype(str) == str(mes)) &
+        (fn_df.get("player_id", "").astype(str) == str(pid))
+    )
+    fun_ok = bool(fn_df.loc[f].shape[0] > 0)
+
+    return metrics_ok and fun_ok
+
+
+# 👉 lê 'funcoes' do Sheets/CSV
+funcoes_sheet_df = load_funcoes_sheet()
+
+# 👉 COMPLETOS apenas pelo que existe no Sheets (avaliacoes + funcoes)
+completed_ids_sheet = []
 for _, r in players.iterrows():
-    pid, pcat = int(r["player_id"]), str(r["category"]).upper()
-    if completed_for_player(pid, pcat): completos_ids.append(pid)
-st.sidebar.progress(len(completos_ids)/len(players), text=f"Completos: {len(completos_ids)}/{len(players)}")
+    pid  = int(r["player_id"])
+    pcat = str(r["category"]).upper()
+    if is_complete_in_sheet(aval_all, funcoes_sheet_df, perfil, ano, mes, pid, pcat):
+        completed_ids_sheet.append(pid)
+
+st.sidebar.progress(
+    len(completed_ids_sheet)/len(players),
+    text=f"Completos: {len(completed_ids_sheet)}/{len(players)}"
+)
 
 if "selecionado_id" not in st.session_state:
     st.session_state["selecionado_id"] = int(players.iloc[0]["player_id"])
@@ -690,7 +748,7 @@ for _, row in players.iterrows():
                 selecionado_id = pid
             st.markdown("</div>", unsafe_allow_html=True)
         with c3:
-            done = completed_for_player(pid, str(row["category"]).upper())
+            done = (pid in completed_ids_sheet)
             st.markdown(f"<span class='status-dot {'status-done' if done else 'status-pending'}'></span>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -833,10 +891,16 @@ else:
         else:
             funcoes_str = "; ".join(funcoes_escolhidas)
             save_funcoes_tag(ano, mes, perfil, int(sel["player_id"]), funcoes_str)
+        # Após save_avaliacoes_bulk(rows) e save_funcoes_tag(...)
+        try:
+            load_avaliacoes.clear()
+            read_sheet.clear()
+            load_funcoes_sheet.clear()
+        except Exception:
+            pass
+    st.success("✅ Avaliação registada.")
+    st.rerun()
 
-        st.session_state["session_completed"].add((perfil,ano,mes,int(sel["player_id"])))
-        st.success("✅ Avaliação registada.")
-        st.rerun()
 
     if not can_submit:
         st.info("⚠️ Responda todas as métricas obrigatórias (1–4) antes de submeter.")
