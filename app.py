@@ -689,7 +689,7 @@ col1, col2 = st.columns([1.2, 2.2], gap="large")
 
 # ---- COL1: Jogador + Formulário
 with col1:
-    st.markdown("#### Jogador selecionado")
+    st.markdown("#### Jogador Selecionado")
     _, mid, _ = st.columns([1,2,1])
     with mid:
         st.markdown(
