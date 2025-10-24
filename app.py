@@ -287,6 +287,24 @@ def load_weights_df() -> pd.DataFrame:
 
 weights_df = load_weights_df()
 
+# --- Perfis de utilizador vindos da aba 'weights' ---
+def get_active_profiles_from_weights(df: pd.DataFrame) -> list[str]:
+    if df is None or df.empty:
+        return []
+    # só perfis ativos e com nome válido
+    perfis = df[df.get("ativo", True) == True]["perfil"].dropna().astype(str).str.strip().tolist()
+    # elimina duplicados mantendo a ordem
+    seen = set()
+    out = []
+    for p in perfis:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+PERFIS_ATIVOS = get_active_profiles_from_weights(weights_df)
+
+
 def weights_maps(df: pd.DataFrame) -> Tuple[Dict[str, str], Dict[str, float]]:
     """
     devolve:
@@ -386,7 +404,14 @@ def load_fechos() -> pd.DataFrame:
 
 def save_avaliacoes_bulk(rows_dicts: list[dict]):
     header = ["timestamp","ano","mes","avaliador","player_id","player_numero","player_nome","player_category","metric_id","score","observacoes"]
-    rows = [[rd.get(k,"") for k in header] for rd in rows_dicts]
+    row = {
+    "ano": ano_sel,
+    "mes": mes_sel,
+    "player_id": jogador_id,
+    # ...
+    "perfil": perfil,   # <-- usar o valor do dropdown
+    # ...
+}
     ok = False
     if USE_SHEETS:
         ok = append_rows("avaliacoes", rows)
@@ -748,30 +773,23 @@ with st.sidebar:
 
 
     st.markdown("---")
-    st.write("**Utilizador**")
-    # 1) define a lista de perfis reais
-    perfis_reais = [
-        "Treinador Principal",
-        "Treinador Adjunto 1",
-        "Treinador Adjunto 2",
-        "Treinador Adjunto 3",
-        "Diretor Executivo",
-        "Diretor Desportivo",
-        "Lead Scout",
-        "Administrador",
-    ]
+    st.subheader("Utilizador")
 
-    # 2) insere um item vazio no topo (valor real = ""), mas mostrado em branco
-    opcoes_perfil = [""] + perfis_reais
+    # Garante que 'Administrador' não vem da aba weights (normalmente não é um avaliador)
+    perfis_dropdown = [""] + PERFIS_ATIVOS + (["Administrador"] if "Administrador" not in PERFIS_ATIVOS else [])
 
-    # 3) selectbox com a opção vazia por defeito
     perfil = st.selectbox(
         "Perfil",
-        options=opcoes_perfil,
-        index=0,  # fica na opção vazia ao abrir
-        format_func=lambda v: "" if v == "" else v,  # mostra em branco
+        options=perfis_dropdown,
+        index=0,  # fica vazio ao iniciar
+        format_func=lambda v: "— selecione —" if v == "" else v,
         key="perfil_select",
     )
+
+# Bloqueia a app enquanto não escolherem
+if perfil == "":
+    st.warning("⚠️ Selecione o seu perfil na barra lateral para continuar.")
+    st.stop()
 
 
     # 4) guarda em session_state para reutilizar noutros pontos (Admin etc.)
