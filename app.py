@@ -274,16 +274,18 @@ def load_avaliacoes() -> pd.DataFrame:
     return df
 
 @st.cache_data(ttl=120)
-def load_funcoes_sheet() -> pd.DataFrame:
-    df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
-    if df.empty:
-        return pd.DataFrame(columns=["timestamp","ano","mes","avaliador","player_id","funcoes"])
-    df.columns = [c.strip().lower() for c in df.columns]
-    for c in ("ano","mes","player_id"):
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-    df["avaliador"] = df["avaliador"].astype(str).str.strip()
-    return df
+def load_funcoes():
+    """Lê o catálogo de funções (papéis/funções) a partir de data/funcoes.csv."""
+    try:
+        df = pd.read_csv(FUNCOES_CSV)
+        if "funcao" not in df.columns:
+            st.error("O ficheiro funcoes.csv precisa de ter uma coluna chamada 'funcao'.")
+        return df
+    except Exception as e:
+        st.error(f"Erro ao carregar funcoes.csv: {e}")
+        return pd.DataFrame(columns=["funcao"])
+
+FUNCOES_CAT = load_funcoes()  # <— catálogo carregado uma vez
 
 # ---- Pesos / Perfis (aba `weights`) ----
 DEFAULT_WEIGHTS = pd.DataFrame([
@@ -775,31 +777,55 @@ with col1:
         if "funcoes" not in locals() or funcoes is None or funcoes.empty:
             funcoes = load_funcoes()
 
+        # ===== Funções (obrigatório, multiselect antigo) =====
         st.markdown("### Posições em que apresenta domínio funcional")
-        funcoes_df = funcoes if "funcoes" in locals() else load_funcoes()
+        
+        # usa o catálogo global (evita chamar a função aqui)
+        funcoes_df = FUNCOES_CAT  # <— em vez de load_funcoes()
+        
         if funcoes_df.empty:
             st.warning("Nenhuma função encontrada em data/funcoes.csv.")
             funcoes_escolhidas = []
         else:
-            funcoes_disp = funcoes["funcao"].dropna().unique().tolist()
+            funcoes_disp = funcoes_df["funcao"].dropna().unique().tolist()
+        
+            # (opcional) pré-seleção do mês anterior, se quiseres manter
+            prev_funcoes = []
+            try:
+                fun_df = read_sheet("funcoes") if USE_SHEETS else _read_csv_flex(FUNCOES_CSV)
+                if not fun_df.empty:
+                    fun_df.columns = [c.strip().lower() for c in fun_df.columns]
+                    mf = (
+                        (fun_df.get("ano","").astype(str) == str(ano)) &
+                        (fun_df.get("mes","").astype(str) == str(mes)) &
+                        (fun_df.get("avaliador","").astype(str) == str(perfil)) &
+                        (fun_df.get("player_id","").astype(str) == str(int(sel["player_id"])))
+                    )
+                    if mf.any():
+                        last = fun_df.loc[mf].iloc[-1]
+                        prev_funcoes = [s.strip() for s in str(last.get("funcoes","")).split(";") if s.strip()]
+            except Exception:
+                prev_funcoes = []
+        
             funcoes_escolhidas = st.multiselect(
                 "Escolha uma ou mais posições:",
                 options=funcoes_disp,
-                default=[],
+                default=prev_funcoes if prev_funcoes else [],
             )
-
+        
             obs = st.text_area("Observações")
-
+        
+            # obrigatórios (como já tinhas)
             obrig = pd.concat([
                 secs["enc_pot"][secs["enc_pot"]["obrigatorio"]],
                 secs["fisicos"][secs["fisicos"]["obrigatorio"]],
                 secs["mentais"][secs["mentais"]["obrigatorio"]],
                 secs["especificos"][secs["especificos"]["obrigatorio"]],
             ], ignore_index=True)["metric_id"].tolist()
-
+        
             faltam = [mid for mid in obrig if (respostas.get(mid) is None)]
-            can_submit = (len(faltam)==0)
-
+            can_submit = (len(faltam) == 0)
+        
             if st.button("Submeter avaliação", type="primary", disabled=not can_submit):
                 ts = datetime.utcnow().isoformat()
                 base = dict(
@@ -809,14 +835,16 @@ with col1:
                 )
                 rows = []
                 for mid, val in respostas.items():
-                    if val is None: continue
+                    if val is None:
+                        continue
                     rd = base.copy()
                     rd["metric_id"] = str(mid).upper()
                     rd["score"] = int(val)
                     rows.append(rd)
+        
                 if rows:
                     save_avaliacoes_bulk(rows)
-
+        
                 # Funções obrigatórias
                 if len(funcoes_escolhidas) == 0:
                     st.error("Selecione pelo menos uma Função antes de submeter.")
@@ -824,32 +852,20 @@ with col1:
                 else:
                     funcoes_str = "; ".join(funcoes_escolhidas)
                     save_funcoes_tag(ano, mes, perfil, int(sel["player_id"]), funcoes_str)
-
-                # força refresh a partir do Sheets
-                try:
-                    load_avaliacoes.clear()
-                    read_sheet.clear()
-                    load_funcoes_sheet.clear()
-                except Exception:
-                    pass
-
-                st.session_state["session_completed"].add((perfil,ano,mes,int(sel["player_id"])))
+        
+                st.session_state["session_completed"].add((perfil, ano, mes, int(sel["player_id"])))
                 st.success("✅ Avaliação registada.")
                 st.rerun()
-
+        
             if not can_submit:
                 st.info("⚠️ Responda todas as métricas obrigatórias (1–4) antes de submeter.")
-
-            # Estado do mês
+        
+            # Estado do mês (podes manter como tinhas)
             aval_all = load_avaliacoes()
-            funcoes_sheet_df = load_funcoes_sheet()
-            completed_ids_sheet = []
-            for _, r in players.iterrows():
-                pid_chk  = int(r["player_id"])
-                pcat_chk = str(r["category"]).upper()
-                if is_complete_in_sheet(aval_all, funcoes_sheet_df, perfil, ano, mes, pid_chk, pcat_chk):
-                    completed_ids_sheet.append(pid_chk)
-            st.write(f"**Estado do mês:** {len(completed_ids_sheet)}/{len(players)} jogadores avaliados.")
+            completos = [int(r["player_id"]) for _, r in players.iterrows()
+                         if completed_for_player(int(r["player_id"]), str(r["category"]).upper())]
+            st.write(f"**Estado do mês:** {len(completos)}/{len(players)} jogadores avaliados.")
+
 
 # ======================
 # DASHBOARD DO ADMIN
