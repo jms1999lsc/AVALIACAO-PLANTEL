@@ -938,45 +938,45 @@ with col1:
         )
         st.image(foto_path_for(int(sel["player_id"]), 220), width=220, clamp=True)
 
-    # Se for Administrador: pára aqui no COL1 (sem formulário, sem funções, sem observações)
+    # Se for Administrador: apenas cabeçalho + foto
     if perfil == "Administrador":
-        pass
-    else:
-        # ----- UTILIZADORES (não-admin): formulário completo -----
-        st.markdown("### Formulário de Avaliação")
+        st.stop()  # <- pára a renderização daqui para baixo no COL1
 
-        secs = metrics_for_category(metrics, sel_cat)
+    # Caso contrário, continua com o formulário normal
+    st.markdown("### Formulário de Avaliação")
 
-        def nota(label: str, key: str):
-            opcoes = ["—", 1, 2, 3, 4]
-            escolha = st.radio(label, opcoes, horizontal=True, index=0, key=key)
-            return None if escolha == "—" else escolha
+    secs = metrics_for_category(metrics, sel_cat)
 
-        respostas = {}
+    def nota(label: str, key: str):
+        opcoes = ["—", 1, 2, 3, 4]
+        escolha = st.radio(label, opcoes, horizontal=True, index=0, key=key)
+        return None if escolha == "—" else escolha
 
-        if not secs["enc_pot"].empty:
-            st.markdown("##### Encaixe & Potencial")
-            for _, m in secs["enc_pot"].iterrows():
-                mid_m = m["metric_id"]; lab = m["label"]
-                respostas[mid_m] = nota(lab, f"m_{mid_m}_{selecionado_id}_{ano}_{mes}_{perfil}")
+    respostas = {}
 
-        if not secs["fisicos"].empty:
-            st.markdown("##### Parâmetros Físicos")
-            for _, m in secs["fisicos"].iterrows():
-                mid_m = m["metric_id"]; lab = m["label"]
-                respostas[mid_m] = nota(lab, f"m_{mid_m}_{selecionado_id}_{ano}_{mes}_{perfil}")
+    if not secs["enc_pot"].empty:
+        st.markdown("##### Encaixe & Potencial")
+        for _, m in secs["enc_pot"].iterrows():
+            mid_m = m["metric_id"]; lab = m["label"]
+            respostas[mid_m] = nota(lab, f"m_{mid_m}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-        if not secs["mentais"].empty:
-            st.markdown("##### Parâmetros Mentais")
-            for _, m in secs["mentais"].iterrows():
-                mid_m = m["metric_id"]; lab = m["label"]
-                respostas[mid_m] = nota(lab, f"m_{mid_m}_{selecionado_id}_{ano}_{mes}_{perfil}")
+    if not secs["fisicos"].empty:
+        st.markdown("##### Parâmetros Físicos")
+        for _, m in secs["fisicos"].iterrows():
+            mid_m = m["metric_id"]; lab = m["label"]
+            respostas[mid_m] = nota(lab, f"m_{mid_m}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
-        if not secs["especificos"].empty:
-            st.markdown(f"##### Específicos da Posição ({sel_cat})")
-            for _, m in secs["especificos"].iterrows():
-                mid_m = m["metric_id"]; lab = m["label"]
-                respostas[mid_m] = nota(lab, f"m_{mid_m}_{selecionado_id}_{ano}_{mes}_{perfil}")
+    if not secs["mentais"].empty:
+        st.markdown("##### Parâmetros Mentais")
+        for _, m in secs["mentais"].iterrows():
+            mid_m = m["metric_id"]; lab = m["label"]
+            respostas[mid_m] = nota(lab, f"m_{mid_m}_{selecionado_id}_{ano}_{mes}_{perfil}")
+
+    if not secs["especificos"].empty:
+        st.markdown(f"##### Específicos da Posição ({sel_cat})")
+        for _, m in secs["especificos"].iterrows():
+            mid_m = m["metric_id"]; lab = m["label"]
+            respostas[mid_m] = nota(lab, f"m_{mid_m}_{selecionado_id}_{ano}_{mes}_{perfil}")
 
         # ===== Funções (multiselect obrigatório) =====
         st.markdown("### Posições em que apresenta domínio funcional")
