@@ -831,6 +831,10 @@ st.session_state["selecionado_id"]=selecionado_id
 sel = players[players["player_id"]==selecionado_id].iloc[0]
 sel_cat = str(sel["category"]).upper()
 
+if st.session_state.get("perfil", "") == "":
+    st.warning("⚠️ Selecione o seu perfil na barra lateral para continuar.")
+    st.stop()
+
 # =========================
 # Layout principal
 # =========================
