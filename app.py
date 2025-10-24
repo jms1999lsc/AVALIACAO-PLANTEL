@@ -776,7 +776,8 @@ with col1:
             funcoes = load_funcoes()
 
         st.markdown("### Posições em que apresenta domínio funcional")
-        if funcoes.empty:
+        funcoes_df = funcoes if "funcoes" in locals() else load_funcoes()
+        if funcoes_df.empty:
             st.warning("Nenhuma função encontrada em data/funcoes.csv.")
             funcoes_escolhidas = []
         else:
