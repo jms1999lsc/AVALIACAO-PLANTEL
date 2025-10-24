@@ -297,19 +297,41 @@ DEFAULT_WEIGHTS = pd.DataFrame([
 
 @st.cache_data(ttl=120)
 def load_weights_df() -> pd.DataFrame:
-    if USE_SHEETS:
-        df = read_sheet("weights")
-        if not df.empty:
-            df.columns = [c.strip().lower() for c in df.columns]
-            need = {"perfil","grupo","peso_grupo","peso_individual"}
-            if need.issubset(df.columns):
-                df["perfil"] = df["perfil"].astype(str).str.strip()
-                df["grupo"]  = df["grupo"].astype(str).str.strip().str.upper()
-                df["peso_grupo"] = pd.to_numeric(df["peso_grupo"], errors="coerce")
-                df["peso_individual"] = pd.to_numeric(df["peso_individual"], errors="coerce")
-                df = df.dropna(subset=["perfil","grupo","peso_grupo","peso_individual"])
-                return df
-    return DEFAULT_WEIGHTS.copy()
+    """
+    Lê a aba 'weights' e aceita vírgula decimal nos pesos.
+    Se, após limpeza, ficar vazia, retorna DEFAULT_WEIGHTS.
+    Esperado: perfil | grupo | peso_grupo | peso_individual
+    grupos: 'ET' (Equipa Técnica) e 'DD' (Direção Desportiva)
+    """
+    try:
+        if USE_SHEETS:
+            df = read_sheet("weights")
+            if not df.empty:
+                df.columns = [c.strip().lower() for c in df.columns]
+                need = {"perfil", "grupo", "peso_grupo", "peso_individual"}
+                if need.issubset(df.columns):
+                    # normaliza strings
+                    df["perfil"] = df["perfil"].astype(str).str.strip()
+                    df["grupo"]  = df["grupo"].astype(str).str.strip().str.upper()
+
+                    # aceita vírgula decimal
+                    for col in ("peso_grupo", "peso_individual"):
+                        df[col] = (
+                            df[col]
+                            .astype(str)
+                            .str.replace(",", ".", regex=False)
+                        )
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+                    # descarta linhas inválidas
+                    df = df.dropna(subset=["perfil", "grupo", "peso_grupo", "peso_individual"])
+                    # se depois disto ainda tiver linhas, usa-as
+                    if not df.empty:
+                        return df
+        # fallback se sheet ausente/ inválida/ vazia
+        return DEFAULT_WEIGHTS.copy()
+    except Exception:
+        return DEFAULT_WEIGHTS.copy()
 
 # ==========================
 # SALVAR
