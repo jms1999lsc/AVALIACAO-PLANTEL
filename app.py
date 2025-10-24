@@ -749,6 +749,10 @@ with st.sidebar:
     st.session_state["mes"] = st.selectbox("Mês", list(range(1,13)), index=st.session_state["mes"]-1,
                                            format_func=lambda m: datetime(2000,m,1).strftime("%B").capitalize())
 
+if st.session_state.get("perfil", "") == "":
+    st.warning("⚠️ Selecione o seu perfil na barra lateral para continuar.")
+    st.stop()
+
     st.markdown("---")
     st.write("**Utilizador**")
     # 1) define a lista de perfis reais
