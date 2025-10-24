@@ -600,6 +600,18 @@ with st.sidebar:
     st.markdown("---")
     st.write("🏃 **Jogadores**")
 
+    # 🔄 Botão de atualização de dados (Sheets + cache local)
+    if st.button("🔄 Atualizar dados"):
+        load_avaliacoes.clear()
+        load_funcoes_sheet.clear()
+        read_sheet.clear()
+        st.session_state["session_completed"] = set()
+        st.success("Dados e progresso recarregados com sucesso.")
+        st.rerun()
+
+ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
+
+
 ano = int(st.session_state["ano"]); mes = int(st.session_state["mes"])
 
 # progresso + seleção
