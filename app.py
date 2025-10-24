@@ -773,7 +773,7 @@ with st.sidebar:
         key="perfil_select",
     )
 
-    if st.session_state.get("perfil", "") == "":
+if st.session_state.get("perfil", "") == "":
     st.warning("⚠️ Selecione o seu perfil na barra lateral para continuar.")
     st.stop()
 
