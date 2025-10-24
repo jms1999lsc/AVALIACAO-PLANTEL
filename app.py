@@ -771,6 +771,9 @@ with col1:
                     prev_funcoes = [s.strip() for s in str(last.get("funcoes", "")).split(";") if s.strip()]
         except Exception:
             pass
+        # garante que o catálogo de funções está carregado
+        if "funcoes" not in locals() or funcoes is None or funcoes.empty:
+            funcoes = load_funcoes()
 
         st.markdown("### Posições em que apresenta domínio funcional")
         if funcoes.empty:
