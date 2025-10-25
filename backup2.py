@@ -671,7 +671,15 @@ sel_cat = str(sel["category"]).upper()
 # =========================
 # Layout principal
 # =========================
-col1, col2 = st.columns([1.2, 2.2], gap="large")
+IS_ADMIN = (perfil == "Administrador")
+
+# Para Administrador: uma única coluna full-width (sem col2)
+# Para perfis normais: duas colunas (formulário + instruções)
+if IS_ADMIN:
+    col1 = st.container()
+    col2 = None
+else:
+    col1, col2 = st.columns([1.2, 2.2], gap="large")
 
 # ---- COL1: Jogador + Formulário (ou Dashboard-only p/ Admin)
 with col1:
@@ -882,8 +890,8 @@ with col1:
         st.caption("A linha cinza representa o mês anterior; a vermelha, o mês selecionado. Médias ponderadas 60/40 ET/DD (com trimming agregado).")
 
 # ---- COL2: Instruções (apenas para perfis normais)
-with col2:
-    if perfil != "Administrador":
+if not IS_ADMIN and col2 is not None:
+    with col2:
         st.markdown("#### Instruções")
         st.markdown("""
         <ol style="line-height:1.7; font-size:.95rem;">
